@@ -1,0 +1,13 @@
+idf_component_register(SRCS "main.c"
+                    INCLUDE_DIRS "."
+                    REQUIRES "ic_driver"
+                    REQUIRES "json"
+                    REQUIRES "esp_wifi"
+                    REQUIRES "nvs_flash"
+                    REQUIRES "esp_adc"
+                    REQUIRES "lwip"
+                    REQUIRES "freertos"
+                    REQUIRES "esp_common"
+                    REQUIRES "esp_event"
+                    REQUIRES "mqtt"
+                    REQUIRES "driver")
