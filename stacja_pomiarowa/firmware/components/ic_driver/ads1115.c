@@ -102,9 +102,9 @@ end:
 	return retval;	
 }
 
-esp_err_t ADS1115_AddressMux(ADS1115_t *ads1115, uint8_t addr)
+esp_err_t ADS1115_AddressMux(ADS1115_t *ads1115, uint16_t addr)
 {
-	ads1115->configuration = (ads1115->configuration & MUX_MASK) | (((uint16_t)addr) << MUX_BITS);
+	ads1115->configuration = (ads1115->configuration & MUX_MASK) | addr;
 	return ADS1115_WriteRegister(ads1115, CONFIG_REG, ads1115->configuration);
 }
 
@@ -113,9 +113,9 @@ esp_err_t ADS1115_StartConversion(ADS1115_t *ads1115)
 	return ADS1115_WriteRegister(ads1115, CONFIG_REG, ads1115->configuration | (1 << OS_BIT));
 }
 
-esp_err_t ADS1115_SetPGA(ADS1115_t *ads1115, uint8_t pga)
+esp_err_t ADS1115_SetPGA(ADS1115_t *ads1115, uint16_t pga)
 {
-	ads1115->configuration = (ads1115->configuration & PGA_MASK) | (((uint16_t)pga) << PGA_BITS);
+	ads1115->configuration = (ads1115->configuration & PGA_MASK) | pga;
 	return ADS1115_WriteRegister(ads1115, CONFIG_REG, ads1115->configuration);
 }
 
@@ -125,8 +125,8 @@ esp_err_t ADS1115_ComparatorEnable(ADS1115_t *ads1115)
 	return ADS1115_WriteRegister(ads1115, CONFIG_REG, ads1115->configuration);
 }
 
-esp_err_t ADS1115_SetDataRate(ADS1115_t *ads1115, uint8_t data_rate)
+esp_err_t ADS1115_SetDataRate(ADS1115_t *ads1115, uint16_t data_rate)
 {
-	ads1115->configuration = (ads1115->configuration & DATA_RATE_MASK) | (((uint16_t)data_rate) << DATA_RATE_BITS);
+	ads1115->configuration = (ads1115->configuration & DATA_RATE_MASK) | data_rate;
 	return ADS1115_WriteRegister(ads1115, CONFIG_REG, ads1115->configuration);
 }
