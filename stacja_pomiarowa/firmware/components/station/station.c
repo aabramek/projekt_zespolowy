@@ -3,6 +3,23 @@
 #include "esp_mac.h"
 #include "esp_check.h"
 
+Station_t _station = {
+	.ip_address = 0,
+	.mac_address = {0},
+	.software_version = SOFTWARE_VERSION,
+	
+	.name = "Default name",
+	.measurement_period = DEFAULT_MEASUREMENT_PERIOD,
+
+	.waterer_task = NULL,
+	.measurer_task = NULL,
+	.configuration_receiver_task = NULL
+};
+
+EventGroupHandle_t _station_event_group = NULL;
+
+esp_mqtt_client_handle_t _mqtt_client = NULL;
+
 static void Station_WatererTaskCode(void *pvParemeters)
 {
 	while (1)
@@ -26,24 +43,6 @@ static void Station_ConfigurationReceiverTaskCode(void *pvParemeters)
 
 	}
 }
-
-
-Station_t _station = {
-	.ip_address = 0,
-	.mac_address = {0},
-	.software_version = SOFTWARE_VERSION,
-	
-	.name = "Default name",
-	.measurement_period = DEFAULT_MEASUREMENT_PERIOD,
-
-	.waterer_task = NULL,
-	.measurer_task = NULL,
-	.configuration_receiver_task = NULL
-};
-
-EventGroupHandle_t _station_event_group = NULL;
-
-esp_mqtt_client_handle_t _mqtt_client = NULL;
 
 static void mqtt_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
