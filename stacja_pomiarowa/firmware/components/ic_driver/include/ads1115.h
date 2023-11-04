@@ -11,7 +11,7 @@
 #define DATA_RATE_MASK 0xFF1F
 #define COMP_QUEUE_MASK 0xFFFC
 
-#define DEFAULT_CONFIG_REGISTER_VALUE 0x8583
+#define ADS1115_DEFAULT_CONFIG 0x8583
 
 #define MUX_ADDR_A0 0x4000
 #define MUX_ADDR_A1 0x5000
@@ -42,28 +42,27 @@
 #define OS_BIT 15
 
 #include "esp_check.h"
+#include "driver/i2c.h"
 
 typedef struct
 {
-	uint16_t configuration;
 	uint8_t address;
+	i2c_port_t i2c_port;
 }
 ADS1115_t;
 
-esp_err_t ADS1115_Init(ADS1115_t *ads1115);
+esp_err_t ADS1115_WriteRegister(ADS1115_t *device, uint8_t register_address, uint16_t value);
 
-esp_err_t ADS1115_WriteRegister(ADS1115_t *ads1115, uint8_t register_address, uint16_t value);
+esp_err_t ADS1115_ReadRegister(ADS1115_t *device, uint8_t register_address, uint16_t *value);
 
-esp_err_t ADS1115_ReadRegister(ADS1115_t *ads1115, int8_t register_address, uint16_t *value);
+uint16_t ADS1115_AddressMux(uint16_t configuration, uint16_t mux_address);
 
-esp_err_t ADS1115_AddressMux(ADS1115_t *ads1115, uint16_t addr);
+uint16_t ADS1115_SetPGA(uint16_t configuration, uint16_t pga);
 
-esp_err_t ADS1115_SetPGA(ADS1115_t *ads1115, uint16_t pga);
+esp_err_t ADS1115_StartConversion(ADS1115_t *device, uint16_t configuration);
 
-esp_err_t ADS1115_StartConversion(ADS1115_t *ads1115);
+uint16_t ADS1115_ComparatorEnable(uint16_t configuration);
 
-esp_err_t ADS1115_ComparatorEnable(ADS1115_t *ads1115);
-
-esp_err_t ADS1115_SetDataRate(ADS1115_t *ads1115, uint16_t data_rate);
+uint16_t ADS1115_SetDataRate(uint16_t configuration, uint16_t data_rate);
 
 #endif
