@@ -10,7 +10,7 @@
 #include "mqtt_client.h"
 
 #define SOFTWARE_VERSION 0x100
-#define DEFAULT_MEASUREMENT_PERIOD 5
+#define DEFAULT_MEASUREMENT_PERIOD 1
 
 #define EVT_WIFI_CONFIG_READY	BIT0
 #define EVT_WIFI_CONNECTED		BIT1
@@ -26,26 +26,39 @@
 
 #define STATION_TASKS_PRIORITY 4
 
+#define IP_TO_STRING(IP) IP >> 24, IP >> 16 & 0xFF, IP >> 8 & 0xFF, IP & 0xFF
+
 typedef struct
 {
-	uint32_t ip_address;
-	uint8_t mac_address[6];
-	uint16_t software_version;
+	struct
+	{
+		uint32_t ip_address;
+		char mac_address[18];
+		uint16_t software_version;
 
-	char name[31];
+		char name[31];
 
-	uint8_t measurement_period;
+		uint8_t measurement_period;
+	} configuration;
 
-	TaskHandle_t waterer_task;
-	TaskHandle_t measurer_task;
-	TaskHandle_t configuration_receiver_task;
+	struct
+	{
+		TaskHandle_t waterer_task;
+		TaskHandle_t measurer_task;
+		TaskHandle_t configuration_receiver_task;
+	} tasks;
+
+	EventGroupHandle_t event_group;
+	esp_mqtt_client_handle_t mqtt_client;
+	TimerHandle_t period_timer;
 } Station_t;
 
-extern Station_t _station;
-extern EventGroupHandle_t _station_event_group;
-extern esp_mqtt_client_handle_t _mqtt_client;
-extern TimerHandle_t _period_timer;
+typedef Station_t *StationHandle_t;
 
-void Station_Start(void);
+esp_err_t Station_Create(StationHandle_t *station);
+
+esp_err_t Station_Start(StationHandle_t station);
+
+void Station_DumpConfiguration(StationHandle_t station);
 
 #endif
