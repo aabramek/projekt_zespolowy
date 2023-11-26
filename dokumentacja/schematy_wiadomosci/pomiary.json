@@ -1,0 +1,74 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "none",
+
+    "title": "Wiadomość z wynikiem pomiarów",
+    "type": "object",
+    "properties": {
+        "timestamp": {
+            "description": "Czas wykonania pomiaru",
+            "type": "integer"
+        },
+
+        "analog": {
+            "description": "Wartości z pomiarów z czujników analogowych, podane w mV",
+            "type": "array",
+            "items": {
+                "type": "integer"
+            },
+            "minItems": 32,
+            "maxItems": 32
+        },
+
+        "dht11": {
+            "description": "Wartości z pomiarów z czujników dht11",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "line": {
+                        "description": "Numer linii wejściowej",
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 7
+                    },
+
+                    "temp": {
+                        "description": "Temperatura powierza w st. Celsiusza",
+                        "type": "number",
+                    },
+
+                    "hum": {
+                        "description": "Wilgotność względna powietrza, od 0 do 100%",
+                        "type": "number"
+                    }
+                },
+                "required": ["temp", "hum"]
+            },
+            "maxItems": 8
+        },
+
+        "ds18b20": {
+            "description": "Wartości z pomiarów z czujników ds18b20",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "addr": {
+                        "description": "Unikatowy dla każdego urządzenia 1-Wire adres",
+                        "type": "integer"
+                    },
+
+                    "temp": {
+                        "description": "Temperatura powierza w st. Celsiusza",
+                        "type": "number"
+                    }
+                },
+                "required": ["addr", "temp"]
+            },
+            "minItems": 1
+        }
+    },
+
+    "required": ["analog"]
+}
