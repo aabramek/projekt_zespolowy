@@ -1,0 +1,26 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "none",
+
+    "title": "Rejestracja",
+    "description": "Wiadomość którą stacja wysyła do brokera mqtt na topic 'register' w celu zarejestrowania się w systemie",
+    "type": "object",
+    "properties": {
+        "ip": {
+            "description": "Adres ip stacji w postaci liczby całkowitej",
+            "type": "integer"
+        },
+
+        "mac": {
+            "description": "Adres mac stacji",
+            "type": "string",
+            "pattern": "^[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}$"
+        },
+
+        "sv": {
+            "description": "Wersja oprogramowania stacji w postaci liczby całkowitej",
+            "type": "integer"
+        }
+    },
+    "required": ["ip", "mac", "sv"]
+}

@@ -1,0 +1,81 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "none",
+    "title": "Konfiguracja",
+    "description": "Wiadomosć z harmonogramem sterowania elektrozaworami i częstotliwością wykonywania pomiarów, wysyłana na topic '<adres-mac-stacji>'",
+    "type": "object",
+    "properties": {
+        "period": {
+            "description": "Okres wykonywania pomiarów w minutach",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120,
+        },
+
+        "valves": {
+            "description": "Konfiguracja elektrozaworów i ich harmonogramy",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "line": {
+                        "description": "Linia do której podłączony jest elektrozawór",
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 15
+                    },
+                    "active_state": {
+                        "description": "Stan aktywny elektrozaworu 0 - brak przepływu prądu powoduje przepływ wody, 1 - przepływ prądu powoduje przepływ wody",
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1
+                    },
+                    "mode": {
+                        "description": "Tryb sterowania 0 - zawsze wyłączony, 1 - zawsze włączony, 2 - wg harmonogramu",
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2
+                    },
+                    "schedules": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "day": {
+                                    "description": "Dzień tygodnia którego wpis dotyczy 0 - poniedziałek, 6 - niedziela",
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 6
+                                },
+                                "minute_start": {
+                                    "description": "Minuta czasu startu podlewania",
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 59                                    
+                                },
+                                "minute_stop": {
+                                    "description": "Minuta czasu końca podlewania",
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 59                                    
+                                },
+                                "hour_start": {
+                                    "description": "Godzina czasu startu podlewania",
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 23                                    
+                                },
+                                "hour_stop": {
+                                    "description": "Godzina czasu końca podlewania",
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 23                                    
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

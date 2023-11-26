@@ -2,12 +2,19 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "none",
 
-    "title": "Wiadomość z wynikiem pomiarów",
+    "title": "Wynik pomiarów",
+    "description": "Wynik wykonanych przez stacje pomiarów wysyłany na topic 'measurements'",
     "type": "object",
     "properties": {
         "timestamp": {
-            "description": "Czas wykonania pomiaru",
+            "description": "Czas wykonania pomiaru w postaci unixowego znaczka czasowego",
             "type": "integer"
+        },
+
+       "mac": {
+            "description": "Adres mac stacji",
+            "type": "string",
+            "pattern": "^[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}$"
         },
 
         "analog": {
@@ -40,7 +47,9 @@
 
                     "hum": {
                         "description": "Wilgotność względna powietrza, od 0 do 100%",
-                        "type": "number"
+                        "type": "number",
+                        "minumum": 0,
+                        "maximum": 100
                     }
                 },
                 "required": ["temp", "hum"]
@@ -55,7 +64,7 @@
                 "type": "object",
                 "properties": {
                     "addr": {
-                        "description": "Unikatowy dla każdego urządzenia 1-Wire adres",
+                        "description": "Unikatowy dla każdego urządzenia 1-Wire 64-bitowy adres",
                         "type": "integer"
                     },
 
