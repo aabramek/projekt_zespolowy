@@ -1,0 +1,10 @@
+idf_component_register(SRCS "analog_measurements.c"
+                    SRCS "dht11_measurements.c"
+                    SRCS "one_wire_measurements.c"
+                    INCLUDE_DIRS "include"
+                    REQUIRES "one_wire_bus"
+                    REQUIRES "esp_common"
+                    PRIV_REQUIRES "driver"
+                    PRIV_REQUIRES "freertos"
+                    PRIV_REQUIRES "station"
+                    PRIV_REQUIRES "ic_driver")
