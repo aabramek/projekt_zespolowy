@@ -1,9 +1,10 @@
 #include "dht11_measurements.h"
 #include "dht11.h"
 #include "station.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/event_groups.h"
+
 #include <string.h>
 
 #define RMT_CALLBACK_NOTIFICATION_INDEX 1
@@ -22,8 +23,6 @@ static bool rmt_done_callback(rmt_channel_handle_t rx_ch,
 
 void DHT11MeasurementTaskCode(void *pvParameters)
 {
-	StationHandle_t station = (StationHandle_t)pvParameters;
-
 	TaskHandle_t task = xTaskGetCurrentTaskHandle();
 	
 	DHT11_t dht11;
@@ -59,7 +58,9 @@ void DHT11MeasurementTaskCode(void *pvParameters)
 			result.available = false;
 		}
 		
-		xEventGroupSetBits(station->event_group, EVT_DHT11_MEASUREMENT_READY);
+		xTaskNotifyIndexed((TaskHandle_t)pvParameters,
+			DHT11_MEASUREMENTS_NOTIFICATION_INDEX, (uint32_t)&result,
+			eSetValueWithoutOverwrite);
 	}
 }
 

@@ -1,10 +1,8 @@
 #include "analog_measurements.h"
 #include "ads1115.h"
-#include "station.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/event_groups.h"
 
 #include "driver/i2c.h"
 
@@ -12,8 +10,6 @@ static const char *TAG = "AnalogMeasurement";
 
 void AnalogMeasurementTaskCode(void *pvParameters)
 {
-	StationHandle_t station = (StationHandle_t)pvParameters;
-
 	ADS1115_t adc = {
 		.address = ADDR_GND,
 		.configuration = ADS1115_DEFAULT_CONFIG,
@@ -46,6 +42,8 @@ void AnalogMeasurementTaskCode(void *pvParameters)
 			result.values[i] = reading;
 		}		
 
-		xEventGroupSetBits(station->event_group, EVT_ANALOG_MEASUREMENT_READY);
+		xTaskNotifyIndexed((TaskHandle_t)pvParameters,
+			ANALOG_MEASUREMENTS_NOTIFICATION_INDEX, (uint32_t)&result,
+			eSetValueWithoutOverwrite);
 	}
 }

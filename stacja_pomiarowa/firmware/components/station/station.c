@@ -49,8 +49,8 @@ static esp_err_t Station_StartTasks(StationHandle_t station);
 static void mqtt_event_handler(void *arg, esp_event_base_t event_base,
 	int32_t event_id, void *event_data);
 
-static int measurement_results_to_json(time_t timestamp, int *analog_readings,
-	DHT11MeasurementResult_t *dht11_results,
+static int create_measurement_message(time_t timestamp, char *mac_address,
+	int *analog_readings, DHT11MeasurementResult_t *dht11_results,
 	OneWireMeasurementResult_t *onewire_result, char *buffer,
 	size_t buffer_len);
 
@@ -441,7 +441,7 @@ static void period_timer_callback(TimerHandle_t xTimer)
 	// xTaskNotifyGive(station->tasks.watering);
 }
 
-static void Station_WatererTaskCode(void *pvParameters)
+static void Station_WateringTaskCode(void *pvParameters)
 {
 	while (1)
 	{
@@ -560,9 +560,9 @@ static void Station_MeasurementsTaskCode(void *pvParameters)
 					"Waiting for notification from OneWireMeasurementTask");
 		}
 
-		message_length =  measurement_results_to_json(timestamp,
-			analog_readings, dht11_results, onewire_result, json,
-			JSON_BUFFER_LEN);
+		message_length =  create_measurement_message(timestamp,
+			station->configuration.mac_address, analog_readings, dht11_results,
+			onewire_result, json, JSON_BUFFER_LEN);
 
 		message_id = esp_mqtt_client_enqueue(station->mqtt_client,
 			"measurements", json, message_length, 0, 0, true);
@@ -582,12 +582,14 @@ static void Station_ConfigurationReceiverTaskCode(void *pvParameters)
 	}
 }
 
-static int measurement_results_to_json(time_t timestamp, int *analog_readings,
-	DHT11MeasurementResult_t *dht11_results,
-	OneWireMeasurementResult_t *onewire_result, char *buffer, size_t buffer_len)
+static int create_measurement_message(time_t timestamp, char *mac_address,
+	int *analog_readings, DHT11MeasurementResult_t *dht11_results,
+	OneWireMeasurementResult_t *onewire_result, char *buffer,
+	size_t buffer_len)
 {
 	int pos = 0;
 	pos += sprintf(&buffer[pos], "{\"timestamp\":%lld,", timestamp);
+	pos += sprintf(&buffer[pos], "\"mac\":\"%s\",", mac_address);
 	pos += sprintf(&buffer[pos], "\"analog\":[");
 	for (int i = 0; i < 32; ++i)
 	{

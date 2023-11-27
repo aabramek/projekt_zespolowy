@@ -1,8 +1,6 @@
 #include "one_wire_measurements.h"
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/event_groups.h"
 #include "ds18b20.h"
 #include "driver/gpio.h"
 #include "esp_check.h"
@@ -11,7 +9,6 @@ static const char *TAG = "OneWireMeasurement";
 
 void OneWireMeasurementTaskCode(void *pvParameters)
 {
-	StationHandle_t station = (StationHandle_t)pvParameters;
 	onewire_bus_handle_t bus = NULL;
 	
 	onewire_bus_config_t bus_config = {
@@ -81,6 +78,8 @@ void OneWireMeasurementTaskCode(void *pvParameters)
 			ESP_ERROR_CHECK(ds18b20_del_device(ds18b20s[i]));
 		}
 
-		xEventGroupSetBits(station->event_group, EVT_ONE_WIRE_MEASUREMENT_READY);
+		xTaskNotifyIndexed((TaskHandle_t)pvParameters,
+			ONE_WIRE_MEASUREMENTS_NOTIFICATION_INDEX, (uint32_t)&result,
+			eSetValueWithoutOverwrite);
 	}
 }
