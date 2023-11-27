@@ -41,28 +41,39 @@
 
 #define OS_BIT 15
 
+#define ADDR_GND 0x48
+#define ADDR_VDD 0x49
+#define ADDR_SDA 0x4A
+#define ADDR_SCL 0x4B
+
 #include "esp_check.h"
 #include "driver/i2c.h"
 
 typedef struct
 {
 	uint8_t address;
+	uint16_t configuration;
 	i2c_port_t i2c_port;
 }
 ADS1115_t;
 
-esp_err_t ADS1115_WriteRegister(ADS1115_t *device, uint8_t register_address, uint16_t value);
+esp_err_t ADS1115_WriteRegister(ADS1115_t *device, uint8_t register_address, 
+	uint16_t value);
 
-esp_err_t ADS1115_ReadRegister(ADS1115_t *device, uint8_t register_address, uint16_t *value);
+esp_err_t ADS1115_ReadRegister(ADS1115_t *device, uint8_t register_address,
+	uint16_t *value);
 
-uint16_t ADS1115_AddressMux(uint16_t configuration, uint16_t mux_address);
+void ADS1115_AddressMux(ADS1115_t *device, uint16_t mux_address);
 
-uint16_t ADS1115_SetPGA(uint16_t configuration, uint16_t pga);
+void ADS1115_SetPGA(ADS1115_t *device, uint16_t pga);
 
-esp_err_t ADS1115_StartConversion(ADS1115_t *device, uint16_t configuration);
+esp_err_t ADS1115_StartConversion(ADS1115_t *device);
 
-uint16_t ADS1115_ComparatorEnable(uint16_t configuration);
+void ADS1115_ComparatorEnable(ADS1115_t *device);
 
-uint16_t ADS1115_SetDataRate(uint16_t configuration, uint16_t data_rate);
+void ADS1115_SetDataRate(ADS1115_t *device, uint16_t data_rate);
+
+#define ADS1115_SaveConfiguration(device) \
+	ADS1115_WriteRegister(device, CONFIG_REG, (device)->configuration);
 
 #endif

@@ -1,5 +1,10 @@
 #include "station.h"
 
+#include "analog_measurements.h"
+#include "dht11_measurements.h"
+#include "one_wire_measurements.h"
+#include "mux.h"
+
 #include "esp_mac.h"
 #include "esp_check.h"
 #include "esp_system.h"
@@ -7,33 +12,47 @@
 #include "esp_event.h"
 #include "esp_check.h"
 #include "esp_netif.h"
+#include "esp_netif_sntp.h"
 #include "esp_log.h"
 
+#include "driver/i2c.h"
+#include "driver/gpio.h"
+
 #include <stdio.h>
+#include <string.h>
+#include <time.h>
 
 #define WIFI_BITS_SET(bits) (bits & (EVT_WIFI_CONNECTED | EVT_WIFI_FAIL))
+
+#define JSON_BUFFER_LEN (2000)
 
 // ============================= //
 // STATIC FUNCTIONS DECLARATIONS //
 // ============================= //
+static esp_err_t peripherals_initialize(void);
+
+static esp_err_t wifi_connect(StationHandle_t station);
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 	int32_t event_id, void *event_data);
 
-static esp_err_t wifi_connect(StationHandle_t station);
-
 static void period_timer_callback(TimerHandle_t xTimer);
 
-static void Station_WatererTaskCode(void *pvParemeters);
+static void Station_WateringTaskCode(void *pvParameters);
 
-static void Station_MeasurerTaskCode(void *pvParemeters);
+static void Station_MeasurementsTaskCode(void *pvParameters);
 
-static void Station_ConfigurationReceiverTaskCode(void *pvParemeters);
+static void Station_ConfigurationReceiverTaskCode(void *pvParameters);
 
-static void Station_StopTasks(StationHandle_t station);
+static esp_err_t Station_StartTasks(StationHandle_t station);
 
 static void mqtt_event_handler(void *arg, esp_event_base_t event_base,
 	int32_t event_id, void *event_data);
+
+static int measurement_results_to_json(time_t timestamp, int *analog_readings,
+	DHT11MeasurementResult_t *dht11_results,
+	OneWireMeasurementResult_t *onewire_result, char *buffer,
+	size_t buffer_len);
 
 // ===================== //
 // FUNCTIONS DEFINITIONS //
@@ -95,7 +114,7 @@ esp_err_t Station_Create(StationHandle_t *station)
 	}
 
 	s->period_timer = xTimerCreate("Station period timer",
-		pdMS_TO_TICKS(1000 * 60), pdTRUE, NULL, period_timer_callback);
+		pdMS_TO_TICKS(1000 * 60), pdTRUE, s, period_timer_callback);
 
 	if (s->period_timer == NULL)
 	{
@@ -111,6 +130,8 @@ esp_err_t Station_Start(StationHandle_t station)
 {
 	static const char* TAG = "Station_Start";
 
+	ESP_ERROR_CHECK(peripherals_initialize());
+
 	ESP_ERROR_CHECK(wifi_connect(station));
 
 	EventBits_t bits = 0;
@@ -121,6 +142,15 @@ esp_err_t Station_Start(StationHandle_t station)
 			pdTRUE, pdTRUE, pdMS_TO_TICKS(1000)) & EVT_WIFI_CONNECTED;
 	}
 	while (bits == 0);
+
+	esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+	esp_netif_sntp_init(&sntp_cfg);
+	while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(5000)) != ESP_OK)
+	{
+		ESP_LOGW(TAG, "Waiting for sntp sync");
+	}
+
+	ESP_LOGI(TAG, "Received sntp time");
 
 	if (esp_mqtt_client_register_event( station->mqtt_client,
 		ESP_EVENT_ANY_ID, mqtt_event_handler, station->event_group) != ESP_OK)
@@ -174,11 +204,25 @@ esp_err_t Station_Start(StationHandle_t station)
 		bits = xEventGroupWaitBits(station->event_group, EVT_CONFIG_RECEIVED,
 			pdFALSE, pdTRUE, pdMS_TO_TICKS(1000)) & EVT_CONFIG_RECEIVED;
 		
-		ESP_LOGI(TAG, "Waiting for configuration...");
+		ESP_LOGI(TAG, "Waiting for configuration");
 	}
 	while (bits == 0);
 
 	ESP_LOGI(TAG, "Registration message receved");
+
+	//todo: odczytac konfiguracje i ja zaladowac
+
+	if (Station_StartTasks(station) != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Cannot create station tasks");
+		return ESP_FAIL;
+	}
+
+	while (xTimerStart(station->period_timer, pdMS_TO_TICKS(100)) == pdFAIL)
+	{
+		ESP_LOGW(TAG, "Cannot start station period timer, waiting...");
+	}
+
 	return ESP_OK;
 }
 
@@ -202,31 +246,10 @@ void Station_DumpConfiguration(StationHandle_t station)
 // STATIC FUNCTIONS DEFINITIONS //
 // ============================ //
 
-static void Station_StopTasks(StationHandle_t station)
-{
-	if (station->tasks.waterer_task != NULL)
-	{
-		vTaskDelete(station->tasks.waterer_task);
-		station->tasks.waterer_task = NULL;
-	}
-
-	if (station->tasks.measurer_task != NULL)
-	{
-		vTaskDelete(station->tasks.measurer_task);
-		station->tasks.measurer_task = NULL;
-	}
-
-	if (station->tasks.configuration_receiver_task != NULL)
-	{
-		vTaskDelete(station->tasks.configuration_receiver_task);
-		station->tasks.configuration_receiver_task = NULL;
-	}
-}
-/*
-static esp_err_t Station_StartTasks(void)
+static esp_err_t Station_StartTasks(StationHandle_t station)
 {
 	BaseType_t ret;
-	ret = xTaskCreate(Station_WatererTaskCode,
+	/*ret = xTaskCreate(Station_WatererTaskCode,
 		"Waterer task",
 		WATERER_TASK_STACK_DEPTH,
 		NULL,
@@ -235,44 +258,61 @@ static esp_err_t Station_StartTasks(void)
 	
 	if (ret == pdFALSE)
 	{
-		goto fail;
-	}
+		return ESP_FAIL;
+	}*/
 
-	ret = xTaskCreate(Station_MeasurerTaskCode,
-		"Measurer task",
-		MEASURER_TASK_STACK_DEPTH,
-		NULL,
-		STATION_TASKS_PRIORITY,
-		&station->tasks.measurer_task);
+	ret = xTaskCreate(Station_MeasurementsTaskCode, "Measurements task",
+		MEASUREMENTS_TASK_STACK_DEPTH, station, STATION_TASKS_PRIORITY,
+		&station->tasks.measurements);
 
 	if (ret == pdFALSE)
 	{
-		goto fail;
+		return ESP_FAIL;
 	}
 
-	ret = xTaskCreate(Station_ConfigurationReceiverTaskCode,
+	/*ret = xTaskCreate(Station_ConfigurationReceiverTaskCode,
 		"Configuration receiver task",
 		CONFIGURATION_RECEIVER_TASK_STACK_DEPTH,
 		NULL,
 		STATION_TASKS_PRIORITY,
-		&station->tasks.configuration_receiver_task);
+		&station->tasks.configuration_receiver_task);*/
 
 	if (ret == pdFALSE)
 	{
-		goto fail;
+		return ESP_FAIL;
 	}
 
 	return ESP_OK;
+}
 
-fail:
-	Station_StopTasks();
-	return ESP_FAIL;
-}	*/
+static esp_err_t peripherals_initialize(void)
+{
+	i2c_config_t i2c_cfg = {
+		.mode = I2C_MODE_MASTER,
+		.sda_io_num = GPIO_NUM_21,
+		.scl_io_num = GPIO_NUM_22,
+		.sda_pullup_en = false,
+		.scl_pullup_en = false,
+		.master.clk_speed = 50000
+	};
+	esp_err_t retval = ESP_OK;
+	retval = i2c_param_config(I2C_NUM_0, &i2c_cfg);
+	if (retval != ESP_OK)
+	{
+		return retval;
+	}
+	
+	retval = i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
+	if (retval != ESP_OK)
+	{
+		return retval;
+	}
+
+	return retval;
+}
 
 static esp_err_t wifi_connect(StationHandle_t station)
 {
-	const char *TAG = "wifi_connect";
-
 	const char *wifi_ssid[] = {
 		"Galaxy S22 389D",
 		"UPC2194636"
@@ -304,8 +344,6 @@ static esp_err_t wifi_connect(StationHandle_t station)
 
 	wifi_config_t wifi_cfg = {
 		.sta = {
-			.ssid = "UPC2194636",
-			.password = "hJwtdhP6bnyx",
 			.threshold.authmode = WIFI_AUTH_WPA2_PSK,
 			.pmf_cfg = {
 				.capable = true,
@@ -314,24 +352,12 @@ static esp_err_t wifi_connect(StationHandle_t station)
 		}
 	};
 
+	memcpy(wifi_cfg.sta.ssid, wifi_ssid[1], strlen(wifi_ssid[1]));
+	memcpy(wifi_cfg.sta.password, wifi_passwd[1], strlen(wifi_passwd[1]));
+
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
 	ESP_ERROR_CHECK(esp_wifi_start());
-
-	/*EventBits_t bits = 0;
-	do
-	{
-		ESP_LOGI(TAG, "Waiting for wifi connection...");
-		bits |= xEventGroupWaitBits(station->event_group,
-			EVT_WIFI_CONNECTED | EVT_WIFI_FAIL, pdTRUE, pdFALSE,
-			pdMS_TO_TICKS(1000));
-	}
-	while (!WIFI_BITS_SET(bits));
-
-	if (bits & EVT_WIFI_FAIL)
-	{
-		ret = ESP_FAIL;
-	}*/
 
 	return ret;
 }
@@ -395,10 +421,27 @@ static void mqtt_event_handler(void *arg, esp_event_base_t event_base,
 
 static void period_timer_callback(TimerHandle_t xTimer)
 {
+	static portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
+	static int minutes_elapsed = 0;
+	
+	StationHandle_t station = (StationHandle_t)pvTimerGetTimerID(xTimer);
+	
+	int period;
+	
+	taskENTER_CRITICAL(&spinlock);
+	period = station->configuration.measurement_period;
+	taskEXIT_CRITICAL(&spinlock);
+	
+	if (++minutes_elapsed == station->configuration.measurement_period)
+	{
+		minutes_elapsed = 0;
+		xTaskNotifyGive(station->tasks.measurements);
+	}
 
+	// xTaskNotifyGive(station->tasks.watering);
 }
 
-static void Station_WatererTaskCode(void *pvParemeters)
+static void Station_WatererTaskCode(void *pvParameters)
 {
 	while (1)
 	{
@@ -406,7 +449,132 @@ static void Station_WatererTaskCode(void *pvParemeters)
 	}
 }
 
-static void Station_MeasurerTaskCode(void *pvParemeters)
+static void Station_MeasurementsTaskCode(void *pvParameters)
+{
+	const char* TAG = "MeasurementsTask";
+	
+	ESP_LOGI(TAG, "Task started");
+
+	StationHandle_t station = (StationHandle_t)pvParameters;
+	
+	if (mux_init() != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Cannot initialize gpios for multiplexers");
+		abort();
+	}
+
+	ESP_LOGI(TAG, "Gpio for muxes initialized");
+	
+	TaskHandle_t analog_measurements_task = NULL;
+	TaskHandle_t dht11_measurements_task = NULL;
+	TaskHandle_t ow_measurements_task = NULL;
+
+	TaskHandle_t task = xTaskGetCurrentTaskHandle();
+
+	if (xTaskCreate(AnalogMeasurementTaskCode, "Analog Measurements", 
+		MEASUREMENTS_TASK_STACK_DEPTH, task, STATION_TASKS_PRIORITY - 1,
+		&analog_measurements_task) == pdFAIL)
+	{
+		ESP_LOGE(TAG, "Cannot create AnalogMeasurementTask");
+		abort();
+	}
+
+	ESP_LOGI(TAG, "Created AnalogMeasurementTask");
+
+	if (xTaskCreate(DHT11MeasurementTaskCode, "DHT11 Measurements",
+		MEASUREMENTS_TASK_STACK_DEPTH, task, STATION_TASKS_PRIORITY - 1,
+		&dht11_measurements_task) == pdFAIL)
+	{
+		ESP_LOGE(TAG, "Cannot create DHT11MeasurementTask");
+		abort();
+	}
+
+	if (xTaskCreate(OneWireMeasurementTaskCode, "OneWire Measurements",
+		MEASUREMENTS_TASK_STACK_DEPTH, task, STATION_TASKS_PRIORITY - 1,
+		&ow_measurements_task) == pdFAIL)
+	{
+		ESP_LOGE(TAG, "Cannot create OneWireMeasurementTask");
+		abort();
+	}
+
+	AnalogMeasurementResult_t *analog_result = NULL;
+	
+	DHT11MeasurementResult_t *dht11_result = NULL;
+	DHT11MeasurementResult_t *dht11_results = malloc(
+		sizeof(DHT11MeasurementResult_t) * 8);
+
+	OneWireMeasurementResult_t *onewire_result = NULL;
+
+	int *analog_readings = malloc(sizeof(int) * 32);
+	char *json = malloc(JSON_BUFFER_LEN);
+
+	time_t timestamp;
+	int message_length;
+	int message_id;
+
+	while (1)
+	{
+		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+		time(&timestamp);
+		ESP_LOGI(TAG, "Taking measurements at %lld", timestamp);
+
+		xTaskNotifyGive(ow_measurements_task);
+
+		for (int i = 0; i < 8; ++i)
+		{
+			mux_address(i);
+
+			xTaskNotifyGiveIndexed(dht11_measurements_task, 0);
+			xTaskNotifyGive(analog_measurements_task);
+			
+			while (xTaskNotifyWaitIndexed(ANALOG_MEASUREMENTS_NOTIFICATION_INDEX,
+				0, ULONG_MAX, (uint32_t*)&analog_result, pdMS_TO_TICKS(60))
+				== pdFALSE)
+			{
+				ESP_LOGW(TAG, 
+					"Waiting for notification from AnalogMeasurementTask");
+			}
+
+			for (int j = 0, k = i; j < 4; ++j, k += 8)
+			{
+				analog_readings[k] = analog_result->values[j];
+			}
+
+			while (xTaskNotifyWaitIndexed(DHT11_MEASUREMENTS_NOTIFICATION_INDEX,
+				0, ULONG_MAX, (uint32_t*)&dht11_result, pdMS_TO_TICKS(60))
+				== pdFALSE)
+			{
+				ESP_LOGW(TAG,
+					"Waiting for notification from DHT11MeasurementTask");
+			}
+
+			dht11_results[i] = *dht11_result;
+		}
+
+		while (xTaskNotifyWaitIndexed(ONE_WIRE_MEASUREMENTS_NOTIFICATION_INDEX,
+			0, ULONG_MAX, (uint32_t*)&onewire_result, pdMS_TO_TICKS(1000))
+			== pdFALSE)
+		{
+			ESP_LOGW(TAG,
+					"Waiting for notification from OneWireMeasurementTask");
+		}
+
+		message_length =  measurement_results_to_json(timestamp,
+			analog_readings, dht11_results, onewire_result, json,
+			JSON_BUFFER_LEN);
+
+		message_id = esp_mqtt_client_enqueue(station->mqtt_client,
+			"measurements", json, message_length, 0, 0, true);
+	
+		if (message_id < 0)
+		{
+			ESP_LOGE(TAG, "failed to send measurements");
+		}
+	}
+}
+
+static void Station_ConfigurationReceiverTaskCode(void *pvParameters)
 {
 	while (1)
 	{
@@ -414,10 +582,39 @@ static void Station_MeasurerTaskCode(void *pvParemeters)
 	}
 }
 
-static void Station_ConfigurationReceiverTaskCode(void *pvParemeters)
+static int measurement_results_to_json(time_t timestamp, int *analog_readings,
+	DHT11MeasurementResult_t *dht11_results,
+	OneWireMeasurementResult_t *onewire_result, char *buffer, size_t buffer_len)
 {
-	while (1)
+	int pos = 0;
+	pos += sprintf(&buffer[pos], "{\"timestamp\":%lld,", timestamp);
+	pos += sprintf(&buffer[pos], "\"analog\":[");
+	for (int i = 0; i < 32; ++i)
 	{
-
+		pos += sprintf(&buffer[pos], "%d,", analog_readings[i]);
 	}
+	
+	pos += sprintf(&buffer[pos], "],\"dht11\":[");
+	for (int i = 0; i < 8; ++i)
+	{
+		if (!dht11_results[i].available)
+		{
+			continue;
+		}
+		DHT11_Reading_t *r = &dht11_results[i].reading;
+		pos += sprintf(&buffer[pos],
+			"{\"line\":%d,\"temp\":%hhu.%hhu,\"hum\":%hhu.%hhu},", i,
+			r->temp_integral, r->temp_decimal, r->rh_integral, r->rh_decimal);
+	}
+	
+	pos += sprintf(&buffer[pos], "],\"ds18b20\":[");
+	for (int i = 0; i < onewire_result->num_readings; ++i)
+	{
+		pos += sprintf(&buffer[pos], "{\"addr\":%llu,\"temp\":%.2f},",
+			onewire_result->readings[i].address,
+			onewire_result->readings[i].temperature);
+	}
+	
+	pos += sprintf(&buffer[pos], "]}");
+	return pos + 1;
 }

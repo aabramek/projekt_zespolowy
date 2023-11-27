@@ -9,9 +9,20 @@
 #include "onewire_device.h"
 #include "ds18b20_types.h"
 
+/**
+ * @brief Type of DS18B20 device
+ */
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct ds18b20_device_t {
+    onewire_bus_handle_t bus;
+    onewire_device_address_t addr;
+    uint8_t th_user1;
+    uint8_t tl_user2;
+    ds18b20_resolution_t resolution;
+} ds18b20_device_t;
 
 /**
  * @brief Type of DS18B20 device handle

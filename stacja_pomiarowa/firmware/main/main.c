@@ -13,10 +13,6 @@
 #include "nvs_flash.h"
 #include "esp_log.h"
 
-#include "driver/gpio.h"
-#include "driver/uart.h"
-#include "driver/i2c.h"
-
 static const char* TAG = "Main";
 
 /*static void wifi_set_static_ip(esp_netif_t *netif)
@@ -36,9 +32,11 @@ void app_main(void)
 	
 	if (ret != ESP_OK)
 	{
-		ESP_LOGE(TAG, "Cannot initialize wifi nvs structure");
+		ESP_LOGE(TAG, "Cannot initialize nvs structure");
 		abort();
 	}
+
+	ESP_LOGI(TAG, "Nvs structure initialized");
 	
 	StationHandle_t station = NULL;
 	if (Station_Create(&station) != ESP_OK)
@@ -47,9 +45,15 @@ void app_main(void)
 		abort();
 	}
 
-	Station_Start(station);
+	ESP_LOGI(TAG, "Station created");
 
-	Station_DumpConfiguration(station);
+	if (Station_Start(station) != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Cannot start station");
+		abort();
+	}
+
+	ESP_LOGI(TAG, "Station started");
 
 	vTaskDelete(NULL);
 }

@@ -2,6 +2,7 @@ idf_component_register(SRCS "mcp23017.c"
                     SRCS "mux.c"
                     SRCS "ads1115.c"
                     SRCS "ds18b20.c"
+                    SRCS "dht11.c"
                     INCLUDE_DIRS "include"
                     REQUIRES "driver"
                     PRIV_REQUIRES "one_wire_bus")

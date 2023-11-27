@@ -20,14 +20,14 @@
 #define EVT_MQTT_FAIL			BIT5
 #define EVT_CONFIG_RECEIVED		BIT6
 
-#define WATERER_TASK_STACK_DEPTH 100
-#define MEASURER_TASK_STACK_DEPTH 100
-#define CONFIGURATION_RECEIVER_TASK_STACK_DEPTH 100
+#define WATERING_TASK_STACK_DEPTH 5000
+#define MEASUREMENTS_TASK_STACK_DEPTH 5000
+#define CONFIGURATION_RECEIVER_TASK_STACK_DEPTH 5000
 
 #define STATION_TASKS_PRIORITY 4
 
-#define IP_TO_STRING(IP) IP >> 24, IP >> 16 & 0xFF, IP >> 8 & 0xFF, IP & 0xFF
-
+#define IP_TO_STRING(IP) IP & 0xFF, IP >> 8 & 0xFF, IP >> 16 & 0xFF, IP >> 24
+ 
 typedef struct
 {
 	struct
@@ -43,9 +43,9 @@ typedef struct
 
 	struct
 	{
-		TaskHandle_t waterer_task;
-		TaskHandle_t measurer_task;
-		TaskHandle_t configuration_receiver_task;
+		TaskHandle_t measurements;
+		TaskHandle_t watering;
+		TaskHandle_t configuration_receiver;
 	} tasks;
 
 	EventGroupHandle_t event_group;

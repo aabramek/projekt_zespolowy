@@ -6,7 +6,9 @@
 #include "freertos/task.h"
 #include "esp_system.h"
 
-esp_err_t DHT11_Init(DHT11_t *device,  gpio_num_t gpio_num, gpio_num_t init_signal_gpio_num, rmt_rx_done_callback_t rmt_rx_done_callback void *callback_user_data)
+esp_err_t DHT11_Init(DHT11_t *device,  gpio_num_t gpio_num,
+	gpio_num_t init_signal_gpio_num,
+	rmt_rx_done_callback_t rmt_rx_done_callback, void *callback_user_data)
 {
 	esp_err_t retval = ESP_OK;
 	
@@ -58,6 +60,7 @@ esp_err_t DHT11_Init(DHT11_t *device,  gpio_num_t gpio_num, gpio_num_t init_sign
 
 	device->rx_channel = rx_ch;
 	device->init_signal_gpio_num = init_signal_gpio_num;				
+
 end:
 	return retval;
 }
@@ -76,13 +79,11 @@ esp_err_t DHT11_Read(DHT11_t *device, rmt_symbol_word_t *buffer, size_t buffer_l
 	return retval;
 }
 
-esp_err_t DHT11_Parse(rmt_symbol_word_t *symbols, size_t symbols_num, DHT11_Reading_t *result)
+esp_err_t DHT11_Parse(rmt_symbol_word_t *symbols, size_t symbols_num,
+	DHT11_Reading_t *result)
 {
 	if (symbols_num != 43)
 		return ESP_FAIL;
- 	/*for (size_t i = 0; i < symbols_num; i++) {
-       	printf("{%d:%d},{%d:%d}\r\n", symbols[i].level0, symbols[i].duration0, symbols[i].level1, symbols[i].duration1);
-    }*/
     memset(result, 0, sizeof(DHT11_Reading_t));
 	size_t i = 2;
 	while (i < 10)

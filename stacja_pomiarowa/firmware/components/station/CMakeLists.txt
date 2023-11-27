@@ -2,5 +2,8 @@ idf_component_register(SRCS "station.c"
                     INCLUDE_DIRS "include"
                     REQUIRES "mqtt"
                     REQUIRES "freertos"
+                    PRIV_REQUIRES "driver"
                     PRIV_REQUIRES "esp_wifi"
-                    PRIV_REQUIRES "esp_netif")
+                    PRIV_REQUIRES "esp_netif"
+                    PRIV_REQUIRES "ic_driver"
+                    PRIV_REQUIRES "measurements")

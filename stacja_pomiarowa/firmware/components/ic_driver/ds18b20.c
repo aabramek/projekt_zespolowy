@@ -33,14 +33,6 @@ typedef struct  {
     uint8_t crc_value;     /*!< crc value of scratchpad data */
 } __attribute__((packed)) ds18b20_scratchpad_t;
 
-typedef struct ds18b20_device_t {
-    onewire_bus_handle_t bus;
-    onewire_device_address_t addr;
-    uint8_t th_user1;
-    uint8_t tl_user2;
-    ds18b20_resolution_t resolution;
-} ds18b20_device_t;
-
 esp_err_t ds18b20_new_device(onewire_device_t *device, const ds18b20_config_t *config, ds18b20_device_handle_t *ret_ds18b20)
 {
     ds18b20_device_t *ds18b20 = NULL;

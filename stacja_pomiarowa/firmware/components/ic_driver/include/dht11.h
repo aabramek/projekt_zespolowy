@@ -22,10 +22,14 @@ typedef struct
 }
 DHT11_Reading_t;
 
-esp_err_t DHT11_Init(DHT11_t *device, gpio_num_t gpio_num, gpio_num_t init_signal_gpio_num, rmt_rx_done_callback_t rmt_rx_done_callback, void *callback_user_data);
+esp_err_t DHT11_Init(DHT11_t *device, gpio_num_t gpio_num,
+	gpio_num_t init_signal_gpio_num,
+	rmt_rx_done_callback_t rmt_rx_done_callback, void *callback_user_data);
 
-esp_err_t DHT11_Read(DHT11_t *device, rmt_symbol_word_t *buffer, size_t buffer_len);
+esp_err_t DHT11_Read(DHT11_t *device, rmt_symbol_word_t *buffer,
+	size_t buffer_len);
 
-esp_err_t DHT11_Parse(rmt_symbol_word_t *symbols, size_t symbols_num, DHT11_Reading_t *result);
+esp_err_t DHT11_Parse(rmt_symbol_word_t *symbols, size_t symbols_num,
+	DHT11_Reading_t *result);
 
 #endif
