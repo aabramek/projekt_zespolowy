@@ -6,4 +6,5 @@ idf_component_register(SRCS "station.c"
                     PRIV_REQUIRES "esp_wifi"
                     PRIV_REQUIRES "esp_netif"
                     PRIV_REQUIRES "ic_driver"
+                    PRIV_REQUIRES "watering"
                     PRIV_REQUIRES "measurements")

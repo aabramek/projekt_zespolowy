@@ -4,6 +4,7 @@
 #include "dht11_measurements.h"
 #include "one_wire_measurements.h"
 #include "mux.h"
+#include "watering.h"
 
 #include "esp_mac.h"
 #include "esp_check.h"
@@ -37,8 +38,6 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 	int32_t event_id, void *event_data);
 
 static void period_timer_callback(TimerHandle_t xTimer);
-
-static void Station_WateringTaskCode(void *pvParameters);
 
 static void Station_MeasurementsTaskCode(void *pvParameters);
 
@@ -249,17 +248,17 @@ void Station_DumpConfiguration(StationHandle_t station)
 static esp_err_t Station_StartTasks(StationHandle_t station)
 {
 	BaseType_t ret;
-	/*ret = xTaskCreate(Station_WatererTaskCode,
-		"Waterer task",
-		WATERER_TASK_STACK_DEPTH,
+	ret = xTaskCreate(WateringTaskCode,
+		"Watering task",
+		WATERING_TASK_STACK_DEPTH,
 		NULL,
 		STATION_TASKS_PRIORITY,
-		&station->tasks.waterer_task);
+		&station->tasks.watering);
 	
 	if (ret == pdFALSE)
 	{
 		return ESP_FAIL;
-	}*/
+	}
 
 	ret = xTaskCreate(Station_MeasurementsTaskCode, "Measurements task",
 		MEASUREMENTS_TASK_STACK_DEPTH, station, STATION_TASKS_PRIORITY,
@@ -438,15 +437,7 @@ static void period_timer_callback(TimerHandle_t xTimer)
 		xTaskNotifyGive(station->tasks.measurements);
 	}
 
-	// xTaskNotifyGive(station->tasks.watering);
-}
-
-static void Station_WateringTaskCode(void *pvParameters)
-{
-	while (1)
-	{
-
-	}
+	xTaskNotifyGive(station->tasks.watering);
 }
 
 static void Station_MeasurementsTaskCode(void *pvParameters)
