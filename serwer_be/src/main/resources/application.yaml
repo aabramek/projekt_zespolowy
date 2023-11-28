@@ -1,0 +1,40 @@
+server:
+  port: 8082
+
+
+spring:
+  # datasource config
+  datasource:
+    url: "jdbc:postgresql://localhost:5432/demo_db"     #local app        -> (pgadmin4|postgres) local db |
+    username: "postgres"
+    password: "postgres"
+    driverClassName: "org.postgresql.Driver"
+
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        default_schema: garden
+    hibernate:
+      ddl-auto: update #(create-drop, update, create, validate)
+    show-sql: false #true
+  jackson:
+    default-property-inclusion: NON_NULL
+
+
+mosquitto:
+  topic:
+    data: data
+    register: register
+  password: admin
+  username: admin
+  broker:
+    host: localhost
+    port: 1883
+
+app:
+  valves:
+    default:
+      operationMode: OFF #OFF, ON, AUTO
+      enableHigh: 1
