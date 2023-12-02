@@ -5,14 +5,11 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
-import java.util.List;
-
 @Builder
 @Data
 @AllArgsConstructor
-public class Valves {
+public class ValvesInformation {
     private int pin;
     private OperationMode operationMode;
-    private boolean enableHigh;
-    private List<Schedule> schedulesList;
+
 }

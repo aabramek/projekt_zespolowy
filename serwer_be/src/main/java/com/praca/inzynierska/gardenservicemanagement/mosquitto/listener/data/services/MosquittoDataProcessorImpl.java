@@ -38,67 +38,67 @@ public class MosquittoDataProcessorImpl implements MosquittoDataProcessor {
 
         var stationId = station.get().getId();
         var measurementToSave = new ArrayList<MeasurementsEntity>();
-
-        if(request.getSun() != null) {
-            Arrays.stream(request.getSun()).forEach(it -> measurementToSave.add(sunMeasurementToEntity(it, request.getTimestamp(), stationId)));
-        }
-        if(request.getSoilHumidity() != null) {
-            Arrays.stream(request.getSoilHumidity()).forEach(it -> measurementToSave.add(wilgotnoscMeasurementToEntity(it, request.getTimestamp(), stationId)));
-        }
-        if(request.getSoilHumidity() != null) {
-            Arrays.stream(request.getDth11()).forEach(it -> measurementToSave.addAll(dth11MeasurementToEntity(it, request.getTimestamp(), stationId)));
-        }
-        if(request.getSoilHumidity() != null) {
-            Arrays.stream(request.getDs18b20()).forEach(it -> measurementToSave.add(dscosMeasurementToEntity(it, request.getTimestamp(), stationId)));
-        }
+        //TODO - PRZEPISANIE NA POPRAWNE NAZWY
+//        if(request.getSun() != null) {
+//            Arrays.stream(request.getSun()).forEach(it -> measurementToSave.add(sunMeasurementToEntity(it, request.getTimestamp(), stationId)));
+//        }
+//        if(request.getSoilHumidity() != null) {
+//            Arrays.stream(request.getSoilHumidity()).forEach(it -> measurementToSave.add(wilgotnoscMeasurementToEntity(it, request.getTimestamp(), stationId)));
+//        }
+//        if(request.getSoilHumidity() != null) {
+//            Arrays.stream(request.getDth11()).forEach(it -> measurementToSave.addAll(dth11MeasurementToEntity(it, request.getTimestamp(), stationId)));
+//        }
+//        if(request.getSoilHumidity() != null) {
+//            Arrays.stream(request.getDs18b20()).forEach(it -> measurementToSave.add(dscosMeasurementToEntity(it, request.getTimestamp(), stationId)));
+//        }
 
         measurementsRepository.saveAll(measurementToSave);
         log.info("Saved all measurements from device {}", macAddress);
     }
 
-    private MeasurementsEntity sunMeasurementToEntity(Sun sun, long timestamp, Long stationId) {
-        return MeasurementsEntity.builder()
-                                 .idStation(stationId)
-                                 .value(sun.getValue())
-                                 .type(MeasurementType.INSOLATION.name())
-                                 .timestamp(timestamp)
-                                 .build();
-    }
-
-    private MeasurementsEntity wilgotnoscMeasurementToEntity(SoilHumidity wilgotnosc, long timestamp, Long stationId) {
-        return MeasurementsEntity.builder()
-                                 .idStation(stationId)
-                                 .value(wilgotnosc.getValue())
-                                 .type(MeasurementType.SOIL_HUMIDITY.name())
-                                 .timestamp(timestamp)
-                                 .build();
-    }
-
-    private List<MeasurementsEntity> dth11MeasurementToEntity(Dth11 dth11, long timestamp, Long stationId) {
-        var humidityObject = MeasurementsEntity.builder()
-                                               .idStation(stationId)
-                                               .value(dth11.getValueHumidity())
-                                               .type(MeasurementType.AIR_HUMIDITY.name())
-                                               .timestamp(timestamp)
-                                               .build();
-
-        var tempObject = MeasurementsEntity.builder()
-                                           .idStation(stationId)
-                                           .value(dth11.getValueTemp())
-                                           .type(MeasurementType.AIR_TEMP.name())
-                                           .timestamp(timestamp)
-                                           .build();
-
-        return List.of(humidityObject, tempObject);
-    }
-
-    private MeasurementsEntity dscosMeasurementToEntity(Ds18b20 ds18b20, long timestamp, Long stationId) {
-        return MeasurementsEntity.builder()
-                                 .idStation(stationId)
-                                 .value(ds18b20.getValue())
-                                 .type(MeasurementType.AIR_TEMP.name())
-                                 .timestamp(timestamp)
-                                 .build();
-    }
+//    private MeasurementsEntity sunMeasurementToEntity(Sun sun, long timestamp, Long stationId) {
+//        return MeasurementsEntity.builder()
+//                                 .idStation(stationId)
+//                                 .value(sun.getValue())
+//                                 .type(MeasurementType.INSOLATION.name())
+//                                 .timestamp(timestamp)
+//                                 .build();
+//    }
+//
+//    private MeasurementsEntity wilgotnoscMeasurementToEntity(SoilHumidity wilgotnosc, long timestamp, Long stationId) {
+//        return MeasurementsEntity.builder()
+//                                 .idStation(stationId)
+//                                 .value(wilgotnosc.getValue())
+//                                 .type(MeasurementType.SOIL_HUMIDITY.name())
+//                                 .timestamp(timestamp)
+//                                 .build();
+//    }
+//
+//    private List<MeasurementsEntity> dth11MeasurementToEntity(Dth11 dth11, long timestamp, Long stationId) {
+//        var humidityObject = MeasurementsEntity.builder()
+//                                               .idStation(stationId)
+//                                               .value(dth11.getValueHumidity())
+//                                               .type(MeasurementType.AIR_HUMIDITY.name())
+//                                               .timestamp(timestamp)
+//                                               .build();
+//
+//        var tempObject = MeasurementsEntity.builder()
+//                                           .idStation(stationId)
+//                                           .value(dth11.getValueTemp())
+//                                           .type(MeasurementType.AIR_TEMP.name())
+//                                           .timestamp(timestamp)
+//                                           .build();
+//
+//        return List.of(humidityObject, tempObject);
+//    }
+//
+//    private MeasurementsEntity dscosMeasurementToEntity(Ds18b20 ds18b20, long timestamp, Long stationId) {
+//        return MeasurementsEntity.builder()
+//                                 .idStation(stationId)
+//                                 .value(ds18b20.getValue())
+//                                 .type(MeasurementType.AIR_TEMP.name())
+//                                 .timestamp(timestamp)
+//                                 .build();
+//    }
 
 }

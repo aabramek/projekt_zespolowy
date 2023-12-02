@@ -21,11 +21,12 @@ public class MeasurementsEntity {
     @Column(name = "ID")
     private Long id;
 
-    @Column(name = "ID_STATION", nullable = false)
-    private Long idStation;
+    @Column(name = "SENSOR_ID", nullable = false)
+    private Long sensorId;
 
     @Column(name = "TYPE")
-    private String type;
+    @Enumerated(EnumType.STRING)
+    private MeasurementType type;
 
     @Column(name = "VALUE")
     private double value;

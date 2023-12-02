@@ -8,9 +8,3 @@ public enum MeasurementType {
 
 }
 
-
-//    INSOLATION,
-//            AIR_HUMIDITY,
-
-//
-//            }

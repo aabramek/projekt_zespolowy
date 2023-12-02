@@ -1,4 +1,4 @@
-package com.praca.inzynierska.gardenservicemanagement.webFront.service.impl;
+package com.praca.inzynierska.gardenservicemanagement.webFront.service.serviceImpl;
 
 import com.praca.inzynierska.gardenservicemanagement.datastore.user.UserEntity;
 import com.praca.inzynierska.gardenservicemanagement.datastore.user.UserRepository;
