@@ -52,7 +52,7 @@
                         "maximum": 100
                     }
                 },
-                "required": ["temp", "hum"]
+                "required": ["line", "temp", "hum"]
             },
             "maxItems": 8
         },
@@ -75,9 +75,8 @@
                 },
                 "required": ["addr", "temp"]
             },
-            "minItems": 1
         }
     },
 
-    "required": ["analog"]
+    "required": ["analog", "dht11", "ds18b20"]
 }
