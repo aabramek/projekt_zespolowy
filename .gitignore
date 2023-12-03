@@ -1,36 +1,36 @@
 stacja_pomiarowa/firmware/build/
 baza_danych/*.bak
 
-serwer_be/HELP.md
-serwer_be/target/
-serwer_be/!.mvn/wrapper/maven-wrapper.jar
-serwer_be/!**/src/main/**/target/
-serwer_be/!**/src/test/**/target/
+serwer/HELP.md
+serwer/target/
+serwer/!.mvn/wrapper/maven-wrapper.jar
+serwer/!**/src/main/**/target/
+serwer/!**/src/test/**/target/
 
 ### STS ###
-serwer_be/.apt_generated
-serwer_be/.classpath
-serwer_be/.factorypath
-serwer_be/.project
-serwer_be/.settings
-serwer_be/.springBeans
-serwer_be/.sts4-cache
+serwer/.apt_generated
+serwer/.classpath
+serwer/.factorypath
+serwer/.project
+serwer/.settings
+serwer/.springBeans
+serwer/.sts4-cache
 
 ### IntelliJ IDEA ###
-serwer_be/.idea
-serwer_be/*.iws
-serwer_be/*.iml
-serwer_be/*.ipr
+serwer/.idea
+serwer/*.iws
+serwer/*.iml
+serwer/*.ipr
 
 ### NetBeans ###
-serwer_be/nbproject/private/
-serwer_be/nbbuild/
-serwer_be/dist/
-serwer_be/nbdist/
-serwer_be/.nb-gradle/
-serwer_be/build/
-serwer_be/!**/src/main/**/build/
-serwer_be/!**/src/test/**/build/
+serwer/nbproject/private/
+serwer/nbbuild/
+serwer/dist/
+serwer/nbdist/
+serwer/.nb-gradle/
+serwer/build/
+serwer/!**/src/main/**/build/
+serwer/!**/src/test/**/build/
 
 ### VS Code ###
-serwer_be/.vscode/
+serwer/.vscode/

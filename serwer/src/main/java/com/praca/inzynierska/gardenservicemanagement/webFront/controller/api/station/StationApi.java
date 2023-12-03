@@ -17,10 +17,10 @@ public interface StationApi {
     @GetMapping(value = APP_ROOT + "/station/get/list", produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<StationListResponse> getStationList();
 
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "404", description = "station.not-found: Station not fond")})
-    @GetMapping(value = APP_ROOT + "/station/get/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<StationInformationResponse> getStation(@PathVariable Long id);
+//    @ApiResponses(value = {
+//            @ApiResponse(responseCode = "404", description = "station.not-found: Station not fond")})
+//    @GetMapping(value = APP_ROOT + "/station/get/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+//    ResponseEntity<StationInformationResponse> getStation(@PathVariable Long id);
 
     @ApiResponses(value = {
             @ApiResponse(responseCode = "404", description = "station.not-found: Station not fond")})
@@ -34,7 +34,7 @@ public interface StationApi {
 
     @ApiResponses(value = {
             @ApiResponse(responseCode = "404", description = "station.not-found: Station not fond")})
-    @PostMapping(value = APP_ROOT + "/station/information/get/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = APP_ROOT + "/station/information/get/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<StationDetailsInformationResponse> getStationInformationDetails(@PathVariable Long id);
 
 }

@@ -14,6 +14,11 @@ import org.apache.commons.lang3.ObjectUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.temporal.ChronoField;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -51,6 +56,14 @@ public class MeasurementsInvokerProvider implements MeasurementsProvider {
                                       .dht11InformationList(dth11List)
                                       .ds18b20InformationList(ds18)
                                       .build();
+    }
+    @Override
+    public List<MeasurementsEntity> getMeasurementsForSensors(List<Long> sensorId, LocalDateTime startDate, LocalDateTime endDate) {
+        LocalDateTime startOfDate = startDate.with(ChronoField.NANO_OF_DAY, LocalTime.MIN.toNanoOfDay());
+        LocalDateTime endOfDate = startDate.with(ChronoField.NANO_OF_DAY, LocalTime.MAX.toNanoOfDay());
+        return measurementsRepository.getMeasurementsForSensorsAndBetweenDate(sensorId,
+                                                                              Timestamp.valueOf(startOfDate).getTime(),
+                                                                              Timestamp.valueOf(endOfDate).getTime());
     }
 
     private List<Ds18b20Information> toDs18List(final List<Sensor> list, final List<MeasurementsEntity> lastMeasurements) {

@@ -9,6 +9,7 @@ import com.praca.inzynierska.gardenservicemanagement.webFront.controller.apiMode
 import com.praca.inzynierska.gardenservicemanagement.webFront.errorHandler.exception.ResponseException;
 import com.praca.inzynierska.gardenservicemanagement.webFront.errorHandler.exception.ResponseStatus;
 import com.praca.inzynierska.gardenservicemanagement.webFront.provider.MeasurementsProvider;
+import com.praca.inzynierska.gardenservicemanagement.webFront.provider.StationProvider;
 import com.praca.inzynierska.gardenservicemanagement.webFront.service.StationService;
 import com.praca.inzynierska.gardenservicemanagement.webFront.provider.SensorProvider;
 import com.praca.inzynierska.gardenservicemanagement.webFront.provider.ValvesProvider;
@@ -19,6 +20,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -27,35 +30,41 @@ import java.util.stream.Collectors;
 @Slf4j
 public class StationServiceImpl implements StationService {
 
-    StationsRepository stationsRepository;
+
     ValvesRepository valvesRepository;
     StationUpdater stationUpdater;
     ValvesProvider valvesProvider;
     SensorProvider sensorProvider;
     MeasurementsProvider measurementsProvider;
+    StationProvider stationProvider;
 
     @Autowired
-    public StationServiceImpl(StationsRepository stationsRepository, ValvesRepository valvesRepository, StationUpdater stationUpdater, ValvesProvider valvesProvider, SensorProvider sensorProvider,  MeasurementsProvider measurementsProvider) {
-        this.stationsRepository = stationsRepository;
+    public StationServiceImpl(ValvesRepository valvesRepository,
+                              StationUpdater stationUpdater,
+                              ValvesProvider valvesProvider,
+                              SensorProvider sensorProvider,
+                              MeasurementsProvider measurementsProvider,
+                              StationProvider stationProvider) {
         this.valvesRepository = valvesRepository;
         this.stationUpdater = stationUpdater;
         this.valvesProvider = valvesProvider;
         this.sensorProvider = sensorProvider;
         this.measurementsProvider = measurementsProvider;
+        this.stationProvider = stationProvider;
     }
 
 
     @Override
     public StationListResponse getStationList() {
-        var stationList = stationsRepository.findAll().stream().map(this::toStationElement).toList();
+        var stationList = stationProvider.getAllStation().stream().map(this::toStationElement).toList();
         return StationListResponse.builder().stationListElement(stationList).build();
     }
 
     @Override
     public StationInformationResponse getStationInformation(Long id) {
         //TODO -> INFO TAKIE STACJA NIE ISTNIEJE + DODAĆ DO API
-        var station = stationsRepository.findById(id)
-                                        .orElseThrow(() -> new ResponseException("station.not-found", ResponseStatus.NOT_FOUND));
+        var station = stationProvider.getStationById(id)
+                                     .orElseThrow(() -> new ResponseException("station.not-found", ResponseStatus.NOT_FOUND));
 
         return StationInformationResponse.builder()
                 .id(station.getId())
@@ -65,8 +74,8 @@ public class StationServiceImpl implements StationService {
 
     @Override
     public StationSettingsResponse getStationSettings(Long id) {
-        var station = stationsRepository.findById(id)
-                .orElseThrow(() -> new ResponseException("station.not-found", ResponseStatus.NOT_FOUND));
+        var station = stationProvider.getStationById(id)
+                                     .orElseThrow(() -> new ResponseException("station.not-found", ResponseStatus.NOT_FOUND));
 
         var valves = valvesRepository.findAllByStationId(station.getId());
         return StationSettingsResponse.builder()
@@ -81,8 +90,8 @@ public class StationServiceImpl implements StationService {
     @Override
     @Transactional
     public StationSettingsResponse saveStationSettings(Long id, SaveSettingsRequest request) {
-        var station = stationsRepository.findById(id)
-                .orElseThrow(() -> new ResponseException("station.not-found", ResponseStatus.NOT_FOUND));
+        var station = stationProvider.getStationById(id)
+                                     .orElseThrow(() -> new ResponseException("station.not-found", ResponseStatus.NOT_FOUND));
 
         var valves = valvesRepository.findAllByStationId(station.getId());
         station.setName(request.getName());
@@ -96,8 +105,8 @@ public class StationServiceImpl implements StationService {
 
     @Override
     public StationDetailsInformationResponse getStationInformationDetails(Long id) {
-        var station = stationsRepository.findById(id)
-                .orElseThrow(() -> new ResponseException("station.not-found", ResponseStatus.NOT_FOUND));
+        var station = stationProvider.getStationById(id)
+                                     .orElseThrow(() -> new ResponseException("station.not-found", ResponseStatus.NOT_FOUND));
 
         var valvesEntity = valvesProvider.getValvesInformation(id);
         var valvesList = toValvesList(valvesEntity).stream()
@@ -112,7 +121,7 @@ public class StationServiceImpl implements StationService {
                                                 .addressMac(station.getMacAddress())
                                                 .addressIp(station.getIpAddress())
                                                 .systemVersion(station.getSoftwareVersion())
-                                                .registrationDate(station.getRegisterDate())
+                                                .registrationDate(Timestamp.valueOf(station.getRegisterDate()).getTime())
                                                 .valvesInformationList(valvesList)
                                                 .analogSensorInformationList(sensorsInformationObject.getAnalogSensorInformation())
                                                 .ds18b20InformationList(sensorsInformationObject.getDs18b20InformationList())

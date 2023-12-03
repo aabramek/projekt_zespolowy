@@ -17,7 +17,7 @@ public class StationDetailsInformationResponse {
     String addressMac;
     String addressIp;
     String systemVersion;
-    LocalDateTime registrationDate;
+    Long registrationDate;
     List<AnalogSensorInformation> analogSensorInformationList;
     List<Ds18b20Information> ds18b20InformationList;
     List<Dht11Information> dht11InformationList;

@@ -22,11 +22,6 @@ public class StationController implements StationApi {
     }
 
     @Override
-    public ResponseEntity<StationInformationResponse> getStation(Long id) {
-        return new ResponseEntity<>(stationService.getStationInformation(id), HttpStatus.OK);
-    }
-
-    @Override
     public ResponseEntity<StationSettingsResponse> getStationSettings(Long id) {
         return new ResponseEntity<>(stationService.getStationSettings(id), HttpStatus.OK);
     }
