@@ -1,6 +1,8 @@
 #ifndef WATERING_H
 #define WATERING_H
 
+#include "cJSON.h"
+
 typedef enum
 {
 	sunday, monday, tuesday, wednesday, thursday, friday, saturday
@@ -45,5 +47,7 @@ typedef struct
 Valve_t;
 
 void WateringTaskCode(void *pvParameters);
+
+void watering_configure(cJSON *valves);
 
 #endif

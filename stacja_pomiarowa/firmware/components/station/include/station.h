@@ -51,7 +51,8 @@ typedef struct
 	EventGroupHandle_t event_group;
 	esp_mqtt_client_handle_t mqtt_client;
 	TimerHandle_t period_timer;
-} Station_t;
+}
+Station_t;
 
 typedef Station_t *StationHandle_t;
 

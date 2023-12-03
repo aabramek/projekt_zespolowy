@@ -65,6 +65,15 @@ void WateringTaskCode(void *pvParameters)
 	}
 }
 
+void watering_configure(cJSON *valves)
+{
+	if (valves == NULL)
+	{
+		return;
+	}
+	
+}
+
 static bool time_matches_schedule(const TimePoint_t *time_point, 
 	const Schedule_t *schedule)
 {

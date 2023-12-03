@@ -1,7 +1,7 @@
 idf_component_register(SRCS "main.c"
                     INCLUDE_DIRS "."
+                    REQUIRES "json"
                     PRIV_REQUIRES "ic_driver"
-                    PRIV_REQUIRES "json"
                     PRIV_REQUIRES "esp_wifi"
                     PRIV_REQUIRES "nvs_flash"
                     PRIV_REQUIRES "esp_adc"
