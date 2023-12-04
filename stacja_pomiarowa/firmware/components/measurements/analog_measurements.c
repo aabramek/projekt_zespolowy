@@ -6,6 +6,8 @@
 
 #include "driver/i2c.h"
 
+#include "esp_log.h"
+
 static const char *TAG = "AnalogMeasurement";
 
 void AnalogMeasurementTaskCode(void *pvParameters)
@@ -20,6 +22,8 @@ void AnalogMeasurementTaskCode(void *pvParameters)
 	ADS1115_SaveConfiguration(&adc);
 
 	AnalogMeasurementResult_t result;
+
+	int16_t reg;
 	int32_t reading;
 
 	while (1)
@@ -33,11 +37,11 @@ void AnalogMeasurementTaskCode(void *pvParameters)
 			ADS1115_SaveConfiguration(&adc);
 			ADS1115_StartConversion(&adc);
 			
-			vTaskDelay(pdMS_TO_TICKS(10));
+			vTaskDelay(pdMS_TO_TICKS(30));
 			
-			ADS1115_ReadRegister(&adc, CONVERSION_REG, 
-				(uint16_t*)&reading);
+			ADS1115_ReadRegister(&adc, CONVERSION_REG, (uint16_t*)&reg);
 
+			reading = reg;
 			reading = reading * 375 / 2 / 1000;
 			result.values[i] = reading;
 		}		

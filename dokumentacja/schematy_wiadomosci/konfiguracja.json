@@ -71,11 +71,14 @@
                                     "minimum": 0,
                                     "maximum": 23                                    
                                 }
-                            }
+                            },
+                            "required": ["day", "minute_start", "minute_stop", "hour_start", "hour_stop"]
                         }
                     }
-                }
+                },
+                "required": ["line", "active_state", "mode", "schedules"]
             }
         }
-    }
+    },
+    "required": ["period", "valves"]
 }
