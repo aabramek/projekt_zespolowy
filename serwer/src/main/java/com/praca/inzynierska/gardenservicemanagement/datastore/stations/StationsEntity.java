@@ -1,11 +1,9 @@
 package com.praca.inzynierska.gardenservicemanagement.datastore.stations;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.RequiredArgsConstructor;
+import lombok.*;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 @Entity
@@ -15,7 +13,7 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 @AllArgsConstructor
 @Builder
-public class StationsEntity {
+public class StationsEntity implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)

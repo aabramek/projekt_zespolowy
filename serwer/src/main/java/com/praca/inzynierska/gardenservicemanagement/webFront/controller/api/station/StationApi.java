@@ -29,7 +29,7 @@ public interface StationApi {
 
     @ApiResponses(value = {
             @ApiResponse(responseCode = "404", description = "station.not-found: Station not fond")})
-    @PostMapping(value = APP_ROOT + "/station/settings/get/{id}/save", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = APP_ROOT + "/station/settings/{id}/save", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<StationSettingsResponse> saveStationSettings(@PathVariable Long id, @RequestBody SaveSettingsRequest request);
 
     @ApiResponses(value = {

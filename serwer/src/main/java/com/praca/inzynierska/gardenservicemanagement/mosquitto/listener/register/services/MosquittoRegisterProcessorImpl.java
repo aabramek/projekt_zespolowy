@@ -22,7 +22,7 @@ public class MosquittoRegisterProcessorImpl implements MosquittoRegisterProcesso
 
     @Override
     public boolean registerStation(MosquittoRegisterRequest request) {
-        var macAddress = request.getMac();
+        var macAddress = BinaryParser.getMacAddressFromInt64(Long.parseLong(request.getMac()));
 
         if(stationsRepository.existsByMacAddress(macAddress)) {
              log.error(String.format("Station MAC: %s already exist!", macAddress));
@@ -37,7 +37,7 @@ public class MosquittoRegisterProcessorImpl implements MosquittoRegisterProcesso
                                         .measurementPeriod(1)
                                         .registerDate(LocalDateTime.now())
                                         .build();
-        var station = stationsRepository.save(newStations);
+        stationsRepository.save(newStations);
         log.info(String.format("Station MAC: %s saved successfully!", macAddress));
         return true;
     }
