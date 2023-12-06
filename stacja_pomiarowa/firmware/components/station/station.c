@@ -329,12 +329,14 @@ static esp_err_t wifi_connect(StationHandle_t station)
 {
 	const char *wifi_ssid[] = {
 		"Galaxy S22 389D",
-		"UPC2194636"
+		"UPC2194636",
+		"motorola"
 	};
 
 	const char *wifi_passwd[] = {
 		"tom12345",
-		"hJwtdhP6bnyx"
+		"hJwtdhP6bnyx",
+		"123456789"
 	};
 
 	esp_err_t ret = ESP_OK;

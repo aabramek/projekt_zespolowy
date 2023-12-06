@@ -11,7 +11,7 @@ DayOfWeek_t;
 
 typedef enum
 {
-	on, off, automatic
+	off, on, automatic
 }
 ControlMode_t;
 
@@ -34,12 +34,9 @@ typedef struct
 Schedule_t;
 
 typedef struct
-{
-	struct
-	{
-		uint8_t active_state : 1;
-		ControlMode_t mode : 2;
-	} configuration;
+{	
+	uint8_t active_state;
+	ControlMode_t mode;
 	
 	Schedule_t *schedules;
 	int num_schedules;	
