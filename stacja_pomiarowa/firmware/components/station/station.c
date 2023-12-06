@@ -19,6 +19,8 @@
 #include "driver/i2c.h"
 #include "driver/gpio.h"
 
+#include "cJSON.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -26,6 +28,10 @@
 #define WIFI_BITS_SET(bits) (bits & (EVT_WIFI_CONNECTED | EVT_WIFI_FAIL))
 
 #define JSON_BUFFER_LEN (2000)
+
+static const char *TAG = "Station";
+
+static portMUX_TYPE _spin_lock = portMUX_INITIALIZER_UNLOCKED;
 
 // ============================= //
 // STATIC FUNCTIONS DECLARATIONS //
@@ -39,6 +45,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
 static void period_timer_callback(TimerHandle_t xTimer);
 
+static void station_set_measurement_period(StationHandle_t station,
+	uint8_t period);
+
+static uint8_t station_get_measurement_period(StationHandle_t station);
+
 static void Station_MeasurementsTaskCode(void *pvParameters);
 
 static void Station_ConfigurationReceiverTaskCode(void *pvParameters);
@@ -47,6 +58,9 @@ static esp_err_t Station_StartTasks(StationHandle_t station);
 
 static void mqtt_event_handler(void *arg, esp_event_base_t event_base,
 	int32_t event_id, void *event_data);
+
+static bool mqtt_last_chunk_of_message(
+	const esp_mqtt_event_handle_t event_data);
 
 static int create_measurement_message(time_t timestamp, char *mac_address,
 	int *analog_readings, DHT11MeasurementResult_t *dht11_results,
@@ -59,8 +73,6 @@ static int create_measurement_message(time_t timestamp, char *mac_address,
 
 esp_err_t Station_Create(StationHandle_t *station)
 {
-	const char *TAG = "Station_Create";
-
 	StationHandle_t s = calloc(1, sizeof(Station_t));
 	
 	if (station == NULL)
@@ -102,6 +114,10 @@ esp_err_t Station_Create(StationHandle_t *station)
 			.authentication = {
 				.password = "mqtt"
 			}
+		},
+
+		.session = {
+			.disable_keepalive = false
 		}
 	};
 
@@ -127,9 +143,19 @@ esp_err_t Station_Create(StationHandle_t *station)
 
 esp_err_t Station_Start(StationHandle_t station)
 {
-	static const char* TAG = "Station_Start";
-
 	ESP_ERROR_CHECK(peripherals_initialize());
+
+	if (Station_StartTasks(station) != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Cannot create station tasks");
+		return ESP_FAIL;
+	}
+
+	if (Station_StartTasks(station) != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Cannot create station tasks");
+		return ESP_FAIL;
+	}
 
 	ESP_ERROR_CHECK(wifi_connect(station));
 
@@ -152,7 +178,7 @@ esp_err_t Station_Start(StationHandle_t station)
 	ESP_LOGI(TAG, "Received sntp time");
 
 	if (esp_mqtt_client_register_event( station->mqtt_client,
-		ESP_EVENT_ANY_ID, mqtt_event_handler, station->event_group) != ESP_OK)
+		ESP_EVENT_ANY_ID, mqtt_event_handler, station) != ESP_OK)
 	{
 		ESP_LOGE(TAG, "Cannot register mqtt event");
 		return ESP_FAIL;
@@ -211,12 +237,6 @@ esp_err_t Station_Start(StationHandle_t station)
 
 	//todo: odczytac konfiguracje i ja zaladowac
 
-	if (Station_StartTasks(station) != ESP_OK)
-	{
-		ESP_LOGE(TAG, "Cannot create station tasks");
-		return ESP_FAIL;
-	}
-
 	while (xTimerStart(station->period_timer, pdMS_TO_TICKS(100)) == pdFAIL)
 	{
 		ESP_LOGW(TAG, "Cannot start station period timer, waiting...");
@@ -248,11 +268,8 @@ void Station_DumpConfiguration(StationHandle_t station)
 static esp_err_t Station_StartTasks(StationHandle_t station)
 {
 	BaseType_t ret;
-	ret = xTaskCreate(WateringTaskCode,
-		"Watering task",
-		WATERING_TASK_STACK_DEPTH,
-		NULL,
-		STATION_TASKS_PRIORITY,
+	ret = xTaskCreate(WateringTaskCode, "Watering task",
+		WATERING_TASK_STACK_DEPTH, NULL, STATION_TASKS_PRIORITY,
 		&station->tasks.watering);
 	
 	if (ret == pdFALSE)
@@ -269,12 +286,10 @@ static esp_err_t Station_StartTasks(StationHandle_t station)
 		return ESP_FAIL;
 	}
 
-	/*ret = xTaskCreate(Station_ConfigurationReceiverTaskCode,
-		"Configuration receiver task",
-		CONFIGURATION_RECEIVER_TASK_STACK_DEPTH,
-		NULL,
-		STATION_TASKS_PRIORITY,
-		&station->tasks.configuration_receiver_task);*/
+	ret = xTaskCreate(Station_ConfigurationReceiverTaskCode,
+		"Configuration receiver task", CONFIGURATION_RECEIVER_TASK_STACK_DEPTH,
+		station, STATION_TASKS_PRIORITY,
+		&station->tasks.configuration_receiver);
 
 	if (ret == pdFALSE)
 	{
@@ -314,12 +329,14 @@ static esp_err_t wifi_connect(StationHandle_t station)
 {
 	const char *wifi_ssid[] = {
 		"Galaxy S22 389D",
-		"UPC2194636"
+		"UPC2194636",
+		"motorola"
 	};
 
 	const char *wifi_passwd[] = {
 		"tom12345",
-		"hJwtdhP6bnyx"
+		"hJwtdhP6bnyx",
+		"123456789"
 	};
 
 	esp_err_t ret = ESP_OK;
@@ -364,8 +381,6 @@ static esp_err_t wifi_connect(StationHandle_t station)
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 	int32_t event_id, void *event_data)
 {
-	const char *TAG = "wifi_event_handler";
-
 	StationHandle_t station = (StationHandle_t)arg;
 	if (event_base == WIFI_EVENT)
 	{
@@ -397,19 +412,36 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 static void mqtt_event_handler(void *arg, esp_event_base_t event_base, 
 	int32_t event_id, void *event_data)
 {
-	EventGroupHandle_t event_group = (EventGroupHandle_t)arg;
-	
+	static char *buffer = NULL;
+	static size_t buffer_size = 0;
+
+	StationHandle_t station = (StationHandle_t)arg;
 	esp_mqtt_event_handle_t mqtt_event = (esp_mqtt_event_handle_t)event_data;
 	
 	switch (mqtt_event->event_id)
 	{
 	case MQTT_EVENT_CONNECTED:
-		xEventGroupSetBits(event_group, EVT_MQTT_CONNECTED);
+		xEventGroupSetBits(station->event_group, EVT_MQTT_CONNECTED);
 		break;
 
 	case MQTT_EVENT_DATA:
+		if (mqtt_event->total_data_len > buffer_size)
+		{
+			buffer_size = mqtt_event->total_data_len;
+			buffer = realloc(buffer, buffer_size);
+		}
 		
-		xEventGroupSetBits(event_group, EVT_CONFIG_RECEIVED);
+		memcpy(&buffer[mqtt_event->current_data_offset], mqtt_event->data,
+			mqtt_event->data_len);
+		
+		if (mqtt_last_chunk_of_message(mqtt_event))
+		{
+			cJSON *json = cJSON_ParseWithLength(buffer, buffer_size);
+			
+			xTaskNotify(station->tasks.configuration_receiver,
+				(uint32_t)json, eSetValueWithOverwrite);
+		}
+		
 		break;
 
 	default:
@@ -418,20 +450,21 @@ static void mqtt_event_handler(void *arg, esp_event_base_t event_base,
 	
 }
 
+static bool mqtt_last_chunk_of_message(const esp_mqtt_event_handle_t event_data)
+{
+	return event_data->current_data_offset + event_data->data_len
+		== event_data->total_data_len;
+}
+
 static void period_timer_callback(TimerHandle_t xTimer)
 {
-	static portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 	static int minutes_elapsed = 0;
 	
 	StationHandle_t station = (StationHandle_t)pvTimerGetTimerID(xTimer);
 	
-	int period;
+	int period = station_get_measurement_period(station);
 	
-	taskENTER_CRITICAL(&spinlock);
-	period = station->configuration.measurement_period;
-	taskEXIT_CRITICAL(&spinlock);
-	
-	if (++minutes_elapsed == station->configuration.measurement_period)
+	if (++minutes_elapsed >= period)
 	{
 		minutes_elapsed = 0;
 		xTaskNotifyGive(station->tasks.measurements);
@@ -442,9 +475,7 @@ static void period_timer_callback(TimerHandle_t xTimer)
 
 static void Station_MeasurementsTaskCode(void *pvParameters)
 {
-	const char* TAG = "MeasurementsTask";
-	
-	ESP_LOGI(TAG, "Task started");
+	ESP_LOGI(TAG, "Measurements task started");
 
 	StationHandle_t station = (StationHandle_t)pvParameters;
 	
@@ -567,9 +598,28 @@ static void Station_MeasurementsTaskCode(void *pvParameters)
 
 static void Station_ConfigurationReceiverTaskCode(void *pvParameters)
 {
+	ESP_LOGI(TAG, "Configuration receiver task started");
+
+	StationHandle_t station = (StationHandle_t)pvParameters;
+	cJSON *json = NULL;
+
 	while (1)
 	{
-
+		xTaskNotifyWait(0, 0, (uint32_t*)&json, portMAX_DELAY);
+		if (json == NULL)
+		{
+			ESP_LOGW(TAG, "Malformed configuration message");
+			continue;
+		}
+		cJSON *period = cJSON_GetObjectItemCaseSensitive(json, "period");
+		if (period)
+		{
+			station_set_measurement_period(station,
+				cJSON_GetNumberValue(period));
+		}
+		watering_configure(cJSON_GetObjectItemCaseSensitive(json, "valves"));
+		cJSON_Delete(json);
+		xEventGroupSetBits(station->event_group, EVT_CONFIG_RECEIVED);
 	}
 }
 
@@ -610,4 +660,21 @@ static int create_measurement_message(time_t timestamp, char *mac_address,
 	
 	pos += sprintf(&buffer[pos], "]}");
 	return pos + 1;
+}
+
+static void station_set_measurement_period(StationHandle_t station,
+	uint8_t period)
+{
+	taskENTER_CRITICAL(&_spin_lock);
+	station->configuration.measurement_period = period;
+	taskEXIT_CRITICAL(&_spin_lock);
+}
+
+static uint8_t station_get_measurement_period(StationHandle_t station)
+{
+	uint8_t p;
+	taskENTER_CRITICAL(&_spin_lock);
+	p = station->configuration.measurement_period;
+	taskEXIT_CRITICAL(&_spin_lock);
+	return p;
 }

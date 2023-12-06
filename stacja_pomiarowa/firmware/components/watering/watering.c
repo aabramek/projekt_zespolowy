@@ -1,37 +1,71 @@
 #include <stdio.h>
 #include <time.h>
+#include <string.h>
 
 #include "watering.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
 #include "esp_log.h"
 
-#define VALVES_NUM (16)
+#include "mcp23017.h"
+
+#define VALVES_NUM 16
+#define LINE_NUM_MIN 0
+#define LINE_NUM_MAX 15
+#define ACTIVE_STATE_MIN 0
+#define ACTIVE_STATE_MAX 1
+#define MODE_MIN 0
+#define MODE_MAX 2
 
 static const char* TAG = "Watering";
 
-static Valve_t *valves;
+static Valve_t *valves = NULL;
+
+static SemaphoreHandle_t configuration_mutex = NULL;
 
 static bool time_matches_schedule(const TimePoint_t *time_point, 
 	const Schedule_t *schedule);
 
-static uint16_t set_valve_state(const TimePoint_t *time_point,
+static uint16_t get_valve_state(const TimePoint_t *time_point,
 	const Valve_t *valve);
 
 static DayOfWeek_t get_day_of_week(const struct tm *local_time);
 
+static void configure_valve(cJSON *valve);
+
+static void configure_schedules(Valve_t *valve, const cJSON *schedules);
+
+static bool number_in_range(int number, int a, int b);
+
+static void dump_valves_configuration(void);
+
 void WateringTaskCode(void *pvParameters)
 {
+	ESP_LOGI(TAG, "Task started");
+
 	valves = malloc(sizeof(Valve_t) * VALVES_NUM);
-	
+	if (valves == NULL)
+	{
+		ESP_LOGE(TAG, "Cannot allocate memory for valves configuration");
+		abort();
+	}
+
 	for (int i = 0; i < VALVES_NUM; ++i)
 	{
-		valves[i].configuration.active_state = 1;
-		valves[i].configuration.mode = off;
+		valves[i].active_state = 1;
+		valves[i].mode = off;
 		valves[i].schedules = NULL;
 		valves[i].num_schedules = 0;
+	}
+
+	configuration_mutex = xSemaphoreCreateMutex();
+	if (configuration_mutex == NULL)
+	{
+		ESP_LOGE(TAG, "Cannot create mutex");
+		abort();
 	}
 
 	time_t timestamp;
@@ -39,6 +73,14 @@ void WateringTaskCode(void *pvParameters)
 	TimePoint_t time_point;
 
 	uint16_t valves_states;
+
+	MCP23017_t mcp = {
+		.address = 0x27,
+		.i2c_port = I2C_NUM_0
+	};
+
+	MCP23017_Write(&mcp, MCP23017_REGISTER_MAP_BANK[IODIRA], 0);
+	MCP23017_Write(&mcp, MCP23017_REGISTER_MAP_BANK[IODIRB], 0);
 
 	while (1)
 	{
@@ -54,15 +96,51 @@ void WateringTaskCode(void *pvParameters)
 			local_time.tm_mday, local_time.tm_mon + 1,
 			local_time.tm_year + 1900, local_time.tm_hour,
 			local_time.tm_min, time_point.day_of_week);
+		
+		while (xSemaphoreTake(configuration_mutex, pdMS_TO_TICKS(100)) == pdFALSE)
+		{
+			ESP_LOGI(TAG, "Waiting for semaphore to read configuration");
+		}
 
 		valves_states = 0;
-		
-		for (int i = 0; i < VALVES_NUM; ++i)
+
+		for (uint16_t i = 0; i < VALVES_NUM; ++i)
 		{
-			uint16_t state = set_valve_state(&time_point, &valves[i]);
+			uint16_t state = get_valve_state(&time_point, &valves[i]);
 			valves_states |= (state << i);
 		}
+
+		xSemaphoreGive(configuration_mutex);
+
+		MCP23017_Write(&mcp, MCP23017_REGISTER_MAP_BANK[GPIOA],
+			valves_states);
+		MCP23017_Write(&mcp, MCP23017_REGISTER_MAP_BANK[GPIOB],
+			valves_states >> 8);
 	}
+}
+
+void watering_configure(cJSON *valves)
+{
+	if (valves == NULL)
+	{
+		return;
+	}
+	
+	int n = cJSON_GetArraySize(valves);
+	
+	while (xSemaphoreTake(configuration_mutex, pdMS_TO_TICKS(100)) == pdFALSE)
+	{
+		ESP_LOGI(TAG, "Waiting for semaphore to update configuration");
+	}
+
+	for (int i = 0; i < n; ++i)
+	{
+		configure_valve(cJSON_GetArrayItem(valves, i));
+	}
+
+	xSemaphoreGive(configuration_mutex);
+
+	dump_valves_configuration();
 }
 
 static bool time_matches_schedule(const TimePoint_t *time_point, 
@@ -86,7 +164,7 @@ static bool time_matches_schedule(const TimePoint_t *time_point,
 	}
 
 	if (time_point->hour == schedule->hour_stop
-		&& time_point->minute > schedule->minute_stop)
+		&& time_point->minute >= schedule->minute_stop)
 	{
 		return false;
 	}
@@ -94,17 +172,25 @@ static bool time_matches_schedule(const TimePoint_t *time_point,
 	return true;
 }
 
-static uint16_t set_valve_state(const TimePoint_t *time_point,
+static uint16_t get_valve_state(const TimePoint_t *time_point,
 	const Valve_t *valve)
 {
+	if (valve->mode == on)
+	{
+		return valve->active_state;
+	}
+	if (valve->mode == off)
+	{
+		return valve->active_state ^ 1;
+	}
 	for (int i = 0; i < valve->num_schedules; ++i)
 	{
 		if (time_matches_schedule(time_point, &valve->schedules[i]))
 		{
-			return valve->configuration.active_state; 
+			return valve->active_state; 
 		}
 	}
-	return valve->configuration.active_state ^ 1;	
+	return valve->active_state ^ 1;	
 }
 
 static DayOfWeek_t get_day_of_week(const struct tm *local_time)
@@ -117,4 +203,153 @@ static DayOfWeek_t get_day_of_week(const struct tm *local_time)
 		y - 2, 23 * m / 9 + d + 4 + y / 4- y / 100 + y / 400) % 7;
 
 	return (DayOfWeek_t)i;
+}
+
+static void configure_valve(cJSON *valve)
+{
+	cJSON *line_json = cJSON_GetObjectItemCaseSensitive(valve, "line");
+	cJSON *active_state_json = cJSON_GetObjectItemCaseSensitive(valve,
+		"active_state");
+	cJSON *mode_json = cJSON_GetObjectItemCaseSensitive(valve, "mode");
+	cJSON *schedules_json = cJSON_GetObjectItemCaseSensitive(valve,
+		"schedules");
+
+	if (line_json == NULL || active_state_json == NULL || mode_json == NULL
+		|| schedules_json == NULL)
+	{
+		return;
+	}
+
+	if (!cJSON_IsNumber(line_json) || !cJSON_IsNumber(active_state_json)
+		|| !cJSON_IsNumber(mode_json) || !cJSON_IsArray(schedules_json))
+	{
+		return;
+	}
+
+	int line = cJSON_GetNumberValue(line_json);
+	int active_state = cJSON_GetNumberValue(active_state_json);
+	int mode = cJSON_GetNumberValue(mode_json);
+
+	if (!number_in_range(line, LINE_NUM_MIN, LINE_NUM_MAX)
+		|| !number_in_range(active_state, ACTIVE_STATE_MIN, ACTIVE_STATE_MAX)
+		|| !number_in_range(mode, MODE_MIN, MODE_MAX))
+	{
+		return;
+	}
+
+	valves[line].active_state = active_state;
+	valves[line].mode = mode;
+
+	configure_schedules(&valves[line], schedules_json);
+}
+
+static void configure_schedules(Valve_t *valve, const cJSON *schedules)
+{
+	static Schedule_t* buffer = NULL;
+	static int buffer_size = 0;
+
+	int num_schedules_new = cJSON_GetArraySize(schedules);
+	if (num_schedules_new == 0)
+	{
+		return;
+	}
+	int buffer_size_bytes = sizeof(Schedule_t) * num_schedules_new;
+	if (num_schedules_new > buffer_size)
+	{
+		buffer = realloc(buffer, buffer_size_bytes);
+	}
+	buffer_size = num_schedules_new;
+
+	bool correct = true;
+	for (int i = 0; i < num_schedules_new; ++i)
+	{
+		cJSON *schedule_json = cJSON_GetArrayItem(schedules, i);
+		
+		if (!cJSON_IsObject(schedule_json))
+		{
+			correct = false;
+			break;
+		}
+
+		cJSON *day_of_week_json = cJSON_GetObjectItemCaseSensitive(
+			schedule_json, "day");
+
+		cJSON *minute_start_json = cJSON_GetObjectItemCaseSensitive(
+			schedule_json, "minute_start");
+
+		cJSON *minute_stop_json = cJSON_GetObjectItemCaseSensitive(
+			schedule_json, "minute_stop");
+
+		cJSON *hour_start_json = cJSON_GetObjectItemCaseSensitive(
+			schedule_json, "hour_start");
+
+		cJSON *hour_stop_json = cJSON_GetObjectItemCaseSensitive(
+			schedule_json, "hour_stop");
+
+		if (!cJSON_IsNumber(day_of_week_json)
+			|| !cJSON_IsNumber(minute_start_json)
+			|| !cJSON_IsNumber(minute_stop_json)
+			|| !cJSON_IsNumber(hour_start_json)
+			|| !cJSON_IsNumber(hour_stop_json))
+		{
+			correct = false;
+			break;
+		}
+
+		int day_of_week = cJSON_GetNumberValue(day_of_week_json);
+		int minute_start = cJSON_GetNumberValue(minute_start_json);
+		int minute_stop = cJSON_GetNumberValue(minute_stop_json);
+		int hour_start = cJSON_GetNumberValue(hour_start_json);
+		int hour_stop = cJSON_GetNumberValue(hour_stop_json);
+
+		if (!number_in_range(day_of_week, sunday, saturday)
+			|| !number_in_range(minute_start, 0, 59)
+			|| !number_in_range(minute_stop, 0, 59)
+			|| !number_in_range(hour_start, 0, 23)
+			|| !number_in_range(hour_stop, 0, 23))
+		{
+			correct = false;
+			break;
+		}
+
+		buffer[i].day_of_week = day_of_week;
+		buffer[i].minute_start = minute_start;
+		buffer[i].minute_stop = minute_stop;
+		buffer[i].hour_start = hour_start;
+		buffer[i].hour_stop = hour_stop;
+	}
+
+	if (!correct)
+	{
+		return;
+	}
+
+	if (num_schedules_new > valve->num_schedules)
+	{
+		valve->schedules = realloc(valve->schedules, buffer_size_bytes);
+	}
+	valve->num_schedules = num_schedules_new;
+	memcpy(valve->schedules, buffer, buffer_size_bytes);
+}
+
+static bool number_in_range(int number, int a, int b)
+{
+	return number >= a && number <= b;
+}
+
+static void dump_valves_configuration(void)
+{
+	for (int i = 0; i < VALVES_NUM; ++i)
+	{
+		ESP_LOGI(TAG, "Valve #%d: %d %d", i, valves[i].active_state, valves[i].mode);
+		for (int j = 0; j < valves[i].num_schedules; ++j)
+		{
+			printf("%02d:%02d -> %02d:%02d %d\n",
+				valves[i].schedules[j].hour_start,
+				valves[i].schedules[j].minute_start,
+				valves[i].schedules[j].hour_stop,
+				valves[i].schedules[j].minute_stop,
+				valves[i].schedules[j].day_of_week);
+		}
+	}
 }
