@@ -15,6 +15,8 @@
         "valves": {
             "description": "Konfiguracja elektrozaworów i ich harmonogramy",
             "type": "array",
+            "minItems": 0,
+            "maxItems": 16,
             "items": {
                 "type": "object",
                 "properties": {
@@ -76,7 +78,7 @@
                         }
                     }
                 },
-                "required": ["line", "active_state", "mode", "schedules"]
+                "required": ["line"]
             }
         }
     },

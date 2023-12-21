@@ -208,41 +208,54 @@ static DayOfWeek_t get_day_of_week(const struct tm *local_time)
 static void configure_valve(cJSON *valve)
 {
 	cJSON *line_json = cJSON_GetObjectItemCaseSensitive(valve, "line");
+	if (!cJSON_IsNumber(line_json))
+	{
+		return;
+	}
+	int line = cJSON_GetNumberValue(line_json);
+	if (!number_in_range(line, LINE_NUM_MIN, LINE_NUM_MAX))
+	{
+		return;
+	}
+
 	cJSON *active_state_json = cJSON_GetObjectItemCaseSensitive(valve,
 		"active_state");
+	if (!cJSON_IsNumber(active_state_json))
+	{
+		goto mode_json_property;
+	}
+	int active_state = cJSON_GetNumberValue(active_state_json);
+	if (!number_in_range(active_state, ACTIVE_STATE_MIN, ACTIVE_STATE_MAX))
+	{
+		goto mode_json_property;
+	}
+	valves[line].active_state = active_state;
+
+mode_json_property:
 	cJSON *mode_json = cJSON_GetObjectItemCaseSensitive(valve, "mode");
+	if (!cJSON_IsNumber(mode_json))
+	{
+		goto schedules_property;
+	}	
+	int mode = cJSON_GetNumberValue(mode_json);
+	if (!number_in_range(mode, MODE_MIN, MODE_MAX))
+	{
+		goto schedules_property;
+	}
+	valves[line].mode = mode;
+
+schedules_property:
 	cJSON *schedules_json = cJSON_GetObjectItemCaseSensitive(valve,
 		"schedules");
-
-	if (line_json == NULL || active_state_json == NULL || mode_json == NULL
-		|| schedules_json == NULL)
+	if (!cJSON_IsArray(schedules_json))
 	{
 		return;
 	}
-
-	if (!cJSON_IsNumber(line_json) || !cJSON_IsNumber(active_state_json)
-		|| !cJSON_IsNumber(mode_json) || !cJSON_IsArray(schedules_json))
-	{
-		return;
-	}
-
-	int line = cJSON_GetNumberValue(line_json);
-	int active_state = cJSON_GetNumberValue(active_state_json);
-	int mode = cJSON_GetNumberValue(mode_json);
-
-	if (!number_in_range(line, LINE_NUM_MIN, LINE_NUM_MAX)
-		|| !number_in_range(active_state, ACTIVE_STATE_MIN, ACTIVE_STATE_MAX)
-		|| !number_in_range(mode, MODE_MIN, MODE_MAX))
-	{
-		return;
-	}
-
-	valves[line].active_state = active_state;
-	valves[line].mode = mode;
 
 	configure_schedules(&valves[line], schedules_json);
 }
 
+// todo: zrobić 'vector'
 static void configure_schedules(Valve_t *valve, const cJSON *schedules)
 {
 	static Schedule_t* buffer = NULL;

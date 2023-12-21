@@ -15,6 +15,8 @@
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
 #include "driver/i2c.h"
 #include "driver/gpio.h"
@@ -27,7 +29,7 @@
 
 #define WIFI_BITS_SET(bits) (bits & (EVT_WIFI_CONNECTED | EVT_WIFI_FAIL))
 
-#define JSON_BUFFER_LEN (2000)
+#define MQTT_BITS_SET(bits) (bits & (EVT_MQTT_CONNECTED | EVT_MQTT_FAIL)) 
 
 static const char *TAG = "Station";
 
@@ -45,16 +47,18 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
 static void period_timer_callback(TimerHandle_t xTimer);
 
-static void station_set_measurement_period(StationHandle_t station,
+static void set_measurements_period(StationHandle_t station,
 	uint8_t period);
 
-static uint8_t station_get_measurement_period(StationHandle_t station);
+static esp_err_t read_configuration(Configuration_t *configuration);
 
-static void Station_MeasurementsTaskCode(void *pvParameters);
+static uint8_t get_measurements_period(StationHandle_t station);
 
-static void Station_ConfigurationReceiverTaskCode(void *pvParameters);
+static void measurements_task_code(void *pvParameters);
 
-static esp_err_t Station_StartTasks(StationHandle_t station);
+static void configuration_receiver_task_code(void *pvParameters);
+
+static esp_err_t create_tasks(StationHandle_t station);
 
 static void mqtt_event_handler(void *arg, esp_event_base_t event_base,
 	int32_t event_id, void *event_data);
@@ -70,62 +74,71 @@ static int create_measurement_message(time_t timestamp, char *mac_address,
 // ===================== //
 // FUNCTIONS DEFINITIONS //
 // ===================== //
-
-esp_err_t Station_Create(StationHandle_t *station)
+esp_err_t station_create(StationHandle_t *station)
 {
+	esp_err_t err = ESP_OK;
 	StationHandle_t s = calloc(1, sizeof(Station_t));
-	
+
 	if (station == NULL)
 	{
-		return ESP_FAIL;
+		err = ESP_FAIL;
+		goto end;
 	}
 
 	uint8_t mac[6];
-	if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK)
+	err = esp_read_mac(mac, ESP_MAC_WIFI_STA);
+	if (err != ESP_OK)
 	{
-		ESP_LOGE(TAG, "Cannot read mac address");
-		return ESP_FAIL;
+		ESP_LOGE(TAG, "Failed to read mac address: %s",
+			esp_err_to_name(err));
+		goto end;
 	}
 
-	sprintf(s->configuration.mac_address,
-		"%02X-%02X-%02X-%02X-%02X-%02X", 
-		mac[0], mac[1], mac[2],
-		mac[3], mac[4], mac[5]);
+	sprintf(s->properties.mac_address, "%02X-%02X-%02X-%02X-%02X-%02X", 
+		mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
-	s->configuration.software_version = SOFTWARE_VERSION;
-	s->configuration.measurement_period = DEFAULT_MEASUREMENT_PERIOD;
+	s->properties.software_version = SOFTWARE_VERSION;
 	
 	s->event_group = xEventGroupCreate();
 	if (s->event_group == NULL)
 	{
-		ESP_LOGE(TAG, "Cannot create event group");
-		return ESP_FAIL;
+		ESP_LOGE(TAG, "Failed to create event group");
+		err = ESP_FAIL;
+		goto end;
 	}
+
+	Configuration_t configuration;
+	err = read_configuration(&configuration);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to read configuration: %s",
+			esp_err_to_name(err));
+		goto end;
+	}
+
+	configuration.measurement_period = DEFAULT_MEASUREMENT_PERIOD;
+	s->configuration = configuration;
 
 	esp_mqtt_client_config_t mqtt_cfg = {
 		.broker = {
 			.address = {
-				.uri = "mqtt://192.168.0.220:11337/"
-			}
-		},
-
-		.credentials = {
-			.username = "esp32",
-			.authentication = {
-				.password = "mqtt"
+				.transport = MQTT_TRANSPORT_OVER_TCP,
+				.port = s->configuration.mqtt.port,
+				.hostname = s->configuration.mqtt.host
 			}
 		},
 
 		.session = {
-			.disable_keepalive = false
+			.disable_keepalive = true
 		}
 	};
 
 	s->mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
 	if (s->mqtt_client == NULL)
 	{
-		ESP_LOGE(TAG, "Cannot create mqtt client");
-		return ESP_FAIL;
+		ESP_LOGE(TAG, "Failed to create mqtt client");
+		err = ESP_FAIL;
+		goto end;
 	}
 
 	s->period_timer = xTimerCreate("Station period timer",
@@ -133,166 +146,223 @@ esp_err_t Station_Create(StationHandle_t *station)
 
 	if (s->period_timer == NULL)
 	{
-		ESP_LOGE(TAG, "Cannot create period timer");
-		return ESP_FAIL;
+		ESP_LOGE(TAG, "Failed to create period timer");
+		err = ESP_FAIL;
+		goto end;
 	}
 
-	*station = s;
-	return ESP_OK;
+end:
+
+	if (err == ESP_OK)
+	{
+		*station = s;
+		return err;
+	}
+
+	if (s->event_group)
+	{
+		vEventGroupDelete(s->event_group);
+	}
+
+	if (s->period_timer)
+	{
+		xTimerDelete(s->period_timer, portMAX_DELAY);
+	}
+
+	if (s->mqtt_client)
+	{
+		esp_mqtt_client_destroy(s->mqtt_client);
+	}
+
+	free(s);
+
+	return err;
 }
 
-esp_err_t Station_Start(StationHandle_t station)
+esp_err_t station_start(StationHandle_t station)
 {
-	ESP_ERROR_CHECK(peripherals_initialize());
+	esp_err_t err = ESP_OK;
 
-	if (Station_StartTasks(station) != ESP_OK)
+	err = peripherals_initialize();
+	if (err != ESP_OK)
 	{
-		ESP_LOGE(TAG, "Cannot create station tasks");
-		return ESP_FAIL;
+		ESP_LOGE(TAG, "Failed to initialize peripherals: %s",
+			esp_err_to_name(err));
+		goto end;
 	}
 
-	if (Station_StartTasks(station) != ESP_OK)
+	if (create_tasks(station) != ESP_OK)
 	{
-		ESP_LOGE(TAG, "Cannot create station tasks");
-		return ESP_FAIL;
+		ESP_LOGE(TAG, "Failed to start station tasks");
+		err = ESP_FAIL;
+		goto end;
 	}
 
-	ESP_ERROR_CHECK(wifi_connect(station));
+	err = wifi_connect(station);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to initialize wifi connection: %s",
+			esp_err_to_name(err));
+		goto end;
+	}
 
 	EventBits_t bits = 0;
 	do
 	{
-		ESP_LOGI(TAG, "Waiting for wifi connection");
-		bits = xEventGroupWaitBits(station->event_group, EVT_WIFI_CONNECTED,
-			pdTRUE, pdTRUE, pdMS_TO_TICKS(1000)) & EVT_WIFI_CONNECTED;
+		ESP_LOGI(TAG, "Waiting for wifi connection...");
+		bits = xEventGroupWaitBits(station->event_group,
+			EVT_WIFI_CONNECTED, pdTRUE, pdTRUE,
+			WIFI_CONNECTION_ANTICIPATION_TIME);
 	}
-	while (bits == 0);
+	while (!WIFI_BITS_SET(bits));
 
-	esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
-	esp_netif_sntp_init(&sntp_cfg);
-	while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(5000)) != ESP_OK)
+	if (bits & EVT_WIFI_FAIL)
 	{
-		ESP_LOGW(TAG, "Waiting for sntp sync");
+		ESP_LOGE(TAG, "Failed to connect to wifi");
+		err = ESP_FAIL;
+		goto end;
+	}
+
+	esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG(NTP_HOST);
+	esp_netif_sntp_init(&sntp_cfg);
+	while (esp_netif_sntp_sync_wait(NTP_ANTICIPATION_TIME) != ESP_OK)
+	{
+		ESP_LOGI(TAG, "Waiting for sntp sync...");
 	}
 
 	ESP_LOGI(TAG, "Received sntp time");
 
-	if (esp_mqtt_client_register_event( station->mqtt_client,
-		ESP_EVENT_ANY_ID, mqtt_event_handler, station) != ESP_OK)
+	err = esp_mqtt_client_register_event(station->mqtt_client,
+		ESP_EVENT_ANY_ID, mqtt_event_handler, station);
+	if (err != ESP_OK)
 	{
-		ESP_LOGE(TAG, "Cannot register mqtt event");
-		return ESP_FAIL;
+		ESP_LOGE(TAG, "Failed to register mqtt event: %s",
+			esp_err_to_name(err));
+		goto end;
 	}
 	ESP_LOGI(TAG, "Registered mqtt event");
 
-	if (esp_mqtt_client_start(station->mqtt_client) != ESP_OK)
+	err = esp_mqtt_client_start(station->mqtt_client);
+	if (err != ESP_OK)
 	{
-		ESP_LOGE(TAG, "Cannot start mqtt client");
+		ESP_LOGE(TAG, "Failed to start mqtt client: %s", esp_err_to_name(err));
+		goto end;
 	}
 	ESP_LOGI(TAG, "Started mqtt client");
 
 	bits = 0;
 	do
 	{
-		ESP_LOGI(TAG, "Waiting for mqtt client connection");
+		ESP_LOGI(TAG, "Waiting for mqtt client connection...");
 		bits = xEventGroupWaitBits(station->event_group, EVT_MQTT_CONNECTED,
-			pdTRUE, pdTRUE, pdMS_TO_TICKS(1000)) & EVT_MQTT_CONNECTED;
+			pdTRUE, pdTRUE, MQTT_CONNECTION_ANTICIPATION_TIME);
 	}
-	while (bits == 0);
+	while (!MQTT_BITS_SET(bits));
+
+	if (bits & EVT_MQTT_FAIL)
+	{
+		ESP_LOGE(TAG, "Failed to connect to mqtt broker");
+		err = ESP_FAIL;
+
+		goto end;
+	}
 
 	ESP_LOGI(TAG, "Mqtt client connected");
 
 	if (esp_mqtt_client_subscribe(station->mqtt_client,
-		station->configuration.mac_address, 0) == -1)
+		station->properties.mac_address, 0) == -1)
 	{
-		ESP_LOGE(TAG, "Cannot subscribe to configuration receiver topic");
-		return ESP_FAIL;
+		ESP_LOGE(TAG, "Failed to subscribe to configuration receiver topic");
+		err = ESP_FAIL;
+		goto end;
 	}
 
 	char register_msg[100];
 	
 	sprintf(register_msg, "{\"ip\":%lu,\"mac\":\"%s\",\"sv\":%d}",
-		station->configuration.ip_address, station->configuration.mac_address, 
-		station->configuration.software_version);
-
-	ESP_LOGI(TAG, "%s", register_msg);
+		station->properties.ip_address, station->properties.mac_address, 
+		station->properties.software_version);
 
 	if (esp_mqtt_client_publish(station->mqtt_client, "register", register_msg,
 		strlen(register_msg), 2, 0) == -1)
 	{
-		ESP_LOGE(TAG, "Cannot send registration message");
-		return ESP_FAIL;
+		ESP_LOGE(TAG, "Failed to send registration message");
+		err = ESP_FAIL;
+		goto end;
 	}
 
 	do
 	{
 		bits = xEventGroupWaitBits(station->event_group, EVT_CONFIG_RECEIVED,
-			pdFALSE, pdTRUE, pdMS_TO_TICKS(1000)) & EVT_CONFIG_RECEIVED;
+			pdFALSE, pdTRUE, CONFIGURATION_ANTICIPATION_TIME)
+			& EVT_CONFIG_RECEIVED;
 		
-		ESP_LOGI(TAG, "Waiting for configuration");
+		ESP_LOGI(TAG, "Waiting for configuration...");
 	}
 	while (bits == 0);
 
 	ESP_LOGI(TAG, "Registration message receved");
 
-	//todo: odczytac konfiguracje i ja zaladowac
-
-	while (xTimerStart(station->period_timer, pdMS_TO_TICKS(100)) == pdFAIL)
+	while (xTimerStart(station->period_timer, PERIOD_TIMER_ANTICIPATION_TIME)
+		== pdFAIL)
 	{
-		ESP_LOGW(TAG, "Cannot start station period timer, waiting...");
+		ESP_LOGW(TAG, "Waiting to start station period timer...");
 	}
 
-	return ESP_OK;
+end:
+	return err;
 }
 
-void Station_DumpConfiguration(StationHandle_t station)
+void station_dump_configuration(StationHandle_t station)
 {
-	fprintf(stdout,
-
+	ESP_LOGI(TAG,
 		"Station configuration:\n"
 		"ip: %lu.%lu.%lu.%lu\n"
 		"mac: %s\n"
-		"name: %s\n"
-		"measurement_period: %u\n",
+		"measurement_period: %u\n"
+		"mqtt: %s:%lu\n",
 		
-		IP_TO_STRING(station->configuration.ip_address),
-		station->configuration.mac_address,
-		station->configuration.name,
-		station->configuration.measurement_period);
+		IP_TO_STRING(station->properties.ip_address),
+		station->properties.mac_address,
+		station->configuration.measurement_period,
+		station->configuration.mqtt.host,
+		station->configuration.mqtt.port);
 }
 
 // ============================ //
 // STATIC FUNCTIONS DEFINITIONS //
 // ============================ //
-
-static esp_err_t Station_StartTasks(StationHandle_t station)
+static esp_err_t create_tasks(StationHandle_t station)
 {
 	BaseType_t ret;
 	ret = xTaskCreate(WateringTaskCode, "Watering task",
 		WATERING_TASK_STACK_DEPTH, NULL, STATION_TASKS_PRIORITY,
 		&station->tasks.watering);
-	
+
 	if (ret == pdFALSE)
 	{
+		ESP_LOGE(TAG, "Failed to create watering task");
 		return ESP_FAIL;
 	}
 
-	ret = xTaskCreate(Station_MeasurementsTaskCode, "Measurements task",
+	ret = xTaskCreate(measurements_task_code, "Measurements task",
 		MEASUREMENTS_TASK_STACK_DEPTH, station, STATION_TASKS_PRIORITY,
 		&station->tasks.measurements);
 
 	if (ret == pdFALSE)
 	{
+		ESP_LOGE(TAG, "Failed to create measurements task");
 		return ESP_FAIL;
 	}
 
-	ret = xTaskCreate(Station_ConfigurationReceiverTaskCode,
+	ret = xTaskCreate(configuration_receiver_task_code,
 		"Configuration receiver task", CONFIGURATION_RECEIVER_TASK_STACK_DEPTH,
 		station, STATION_TASKS_PRIORITY,
 		&station->tasks.configuration_receiver);
 
 	if (ret == pdFALSE)
 	{
+		ESP_LOGE(TAG, "Failed to create configuration receiver task");
 		return ESP_FAIL;
 	}
 
@@ -327,18 +397,6 @@ static esp_err_t peripherals_initialize(void)
 
 static esp_err_t wifi_connect(StationHandle_t station)
 {
-	const char *wifi_ssid[] = {
-		"Galaxy S22 389D",
-		"UPC2194636",
-		"motorola"
-	};
-
-	const char *wifi_passwd[] = {
-		"tom12345",
-		"hJwtdhP6bnyx",
-		"123456789"
-	};
-
 	esp_err_t ret = ESP_OK;
 
 	ESP_ERROR_CHECK(esp_netif_init());
@@ -368,8 +426,8 @@ static esp_err_t wifi_connect(StationHandle_t station)
 		}
 	};
 
-	memcpy(wifi_cfg.sta.ssid, wifi_ssid[1], strlen(wifi_ssid[1]));
-	memcpy(wifi_cfg.sta.password, wifi_passwd[1], strlen(wifi_passwd[1]));
+	memcpy(wifi_cfg.sta.ssid, station->configuration.wifi.ssid, 32);
+	memcpy(wifi_cfg.sta.password, station->configuration.wifi.password, 64);
 
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
@@ -381,6 +439,7 @@ static esp_err_t wifi_connect(StationHandle_t station)
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 	int32_t event_id, void *event_data)
 {
+	static int retry_counter = 0;
 	StationHandle_t station = (StationHandle_t)arg;
 	if (event_base == WIFI_EVENT)
 	{
@@ -390,12 +449,20 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 		}
 		else if (event_id == WIFI_EVENT_STA_CONNECTED)
 		{
-
+			retry_counter = 0;
 		}
 		else if (event_id == WIFI_EVENT_STA_DISCONNECTED)
 		{
-			ESP_LOGW(TAG, "Wifi connection lost, retrying");
-			esp_wifi_connect();
+			++retry_counter;
+			if (retry_counter > WIFI_RECONNECT_ATTEMPTS)
+			{
+				xEventGroupSetBits(station->event_group,
+					EVT_WIFI_FAIL);
+			}
+			else
+			{
+				esp_wifi_connect();
+			}
 		}
 	}
 	else
@@ -403,7 +470,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 		if (event_id == IP_EVENT_STA_GOT_IP)
 		{
 			ip_event_got_ip_t* event = (ip_event_got_ip_t*)event_data;
-       		station->configuration.ip_address = event->ip_info.ip.addr;
+       		station->properties.ip_address = event->ip_info.ip.addr;
 			xEventGroupSetBits(station->event_group, EVT_WIFI_CONNECTED);
 		}
 	}
@@ -444,6 +511,14 @@ static void mqtt_event_handler(void *arg, esp_event_base_t event_base,
 		
 		break;
 
+	case MQTT_EVENT_DISCONNECTED:
+		xEventGroupSetBits(station->event_group, EVT_MQTT_FAIL);
+		break;
+
+	case MQTT_EVENT_ERROR:
+			
+		break;
+
 	default:
 		break;
 	}
@@ -462,7 +537,7 @@ static void period_timer_callback(TimerHandle_t xTimer)
 	
 	StationHandle_t station = (StationHandle_t)pvTimerGetTimerID(xTimer);
 	
-	int period = station_get_measurement_period(station);
+	int period = get_measurements_period(station);
 	
 	if (++minutes_elapsed >= period)
 	{
@@ -473,7 +548,7 @@ static void period_timer_callback(TimerHandle_t xTimer)
 	xTaskNotifyGive(station->tasks.watering);
 }
 
-static void Station_MeasurementsTaskCode(void *pvParameters)
+static void measurements_task_code(void *pvParameters)
 {
 	ESP_LOGI(TAG, "Measurements task started");
 
@@ -583,7 +658,7 @@ static void Station_MeasurementsTaskCode(void *pvParameters)
 		}
 
 		message_length =  create_measurement_message(timestamp,
-			station->configuration.mac_address, analog_readings, dht11_results,
+			station->properties.mac_address, analog_readings, dht11_results,
 			onewire_result, json, JSON_BUFFER_LEN);
 
 		message_id = esp_mqtt_client_enqueue(station->mqtt_client,
@@ -591,12 +666,12 @@ static void Station_MeasurementsTaskCode(void *pvParameters)
 	
 		if (message_id < 0)
 		{
-			ESP_LOGE(TAG, "failed to send measurements");
+			ESP_LOGE(TAG, "Failed to send measurements");
 		}
 	}
 }
 
-static void Station_ConfigurationReceiverTaskCode(void *pvParameters)
+static void configuration_receiver_task_code(void *pvParameters)
 {
 	ESP_LOGI(TAG, "Configuration receiver task started");
 
@@ -614,7 +689,7 @@ static void Station_ConfigurationReceiverTaskCode(void *pvParameters)
 		cJSON *period = cJSON_GetObjectItemCaseSensitive(json, "period");
 		if (period)
 		{
-			station_set_measurement_period(station,
+			set_measurements_period(station,
 				cJSON_GetNumberValue(period));
 		}
 		watering_configure(cJSON_GetObjectItemCaseSensitive(json, "valves"));
@@ -636,7 +711,7 @@ static int create_measurement_message(time_t timestamp, char *mac_address,
 	{
 		pos += sprintf(&buffer[pos], "%d,", analog_readings[i]);
 	}
-	
+	--pos;
 	pos += sprintf(&buffer[pos], "],\"dht11\":[");
 	for (int i = 0; i < 8; ++i)
 	{
@@ -648,21 +723,23 @@ static int create_measurement_message(time_t timestamp, char *mac_address,
 		pos += sprintf(&buffer[pos],
 			"{\"line\":%d,\"temp\":%hhu.%hhu,\"hum\":%hhu.%hhu},", i,
 			r->temp_integral, r->temp_decimal, r->rh_integral, r->rh_decimal);
+		--pos;
 	}
 	
 	pos += sprintf(&buffer[pos], "],\"ds18b20\":[");
 	for (int i = 0; i < onewire_result->num_readings; ++i)
 	{
 		pos += sprintf(&buffer[pos], "{\"addr\":%llu,\"temp\":%.2f},",
-			onewire_result->readings[i].address,
+			onewire_result->readings[i].address & 0xFFFFFFFFFFFFFF,
 			onewire_result->readings[i].temperature);
 	}
-	
+	--pos;
+
 	pos += sprintf(&buffer[pos], "]}");
 	return pos + 1;
 }
 
-static void station_set_measurement_period(StationHandle_t station,
+static void set_measurements_period(StationHandle_t station,
 	uint8_t period)
 {
 	taskENTER_CRITICAL(&_spin_lock);
@@ -670,11 +747,86 @@ static void station_set_measurement_period(StationHandle_t station,
 	taskEXIT_CRITICAL(&_spin_lock);
 }
 
-static uint8_t station_get_measurement_period(StationHandle_t station)
+static uint8_t get_measurements_period(StationHandle_t station)
 {
 	uint8_t p;
 	taskENTER_CRITICAL(&_spin_lock);
 	p = station->configuration.measurement_period;
 	taskEXIT_CRITICAL(&_spin_lock);
 	return p;
+}
+
+static esp_err_t read_configuration(Configuration_t *configuration)
+{
+	esp_err_t err = ESP_OK;
+	nvs_handle_t nvs;
+	Configuration_t cfg = {0};
+
+	err = nvs_open("storage", NVS_READWRITE, &nvs);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to open nvs storage: %s", esp_err_to_name(err));
+		goto end;
+	}
+
+	err = nvs_get_u32(nvs, "mqtt_port", &cfg.mqtt.port);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to read mqtt_port from nvs: %s",
+			esp_err_to_name(err));
+		goto end;
+	}
+
+	size_t len;
+	err = nvs_get_str(nvs, "mqtt_host", NULL, &len);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to read mqtt_host length from nvs: %s",
+			esp_err_to_name(err));
+		goto end;
+	}
+
+	cfg.mqtt.host = malloc(len);
+	if (cfg.mqtt.host == NULL)
+	{
+		ESP_LOGE(TAG, "Failed to allocate memory for mqtt_host property");
+		goto end;
+	}
+
+	err = nvs_get_str(nvs, "mqtt_host", cfg.mqtt.host, &len);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to read mqtt_host from nvs: %s",
+			esp_err_to_name(err));
+		goto end;
+	}
+
+	len = 32;
+	err = nvs_get_str(nvs, "wifi_ssid", (char*)cfg.wifi.ssid, &len);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to read wifi_ssid from nvs: %s",
+			esp_err_to_name(err));
+		goto end;
+	}
+
+	len = 64;
+	err = nvs_get_str(nvs, "wifi_password",
+		(char*)cfg.wifi.password, &len);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to read wifi_password from nvs: %s",
+			esp_err_to_name(err));
+		goto end;
+	}
+
+	*configuration = cfg;
+
+end:
+	if (err != ESP_OK)
+	{
+		free(cfg.mqtt.host);
+	}
+	nvs_close(nvs);
+	return err;
 }

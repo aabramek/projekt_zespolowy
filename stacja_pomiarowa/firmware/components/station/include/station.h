@@ -18,6 +18,8 @@
 
 #define STATION_TASKS_PRIORITY 4
 
+#define MQTT_HOST_LEN 20
+
 #define IP_TO_STRING(IP) IP & 0xFF, IP >> 8 & 0xFF, IP >> 16 & 0xFF, IP >> 24
 
 #define EVT_WIFI_CONFIG_READY			BIT0
@@ -28,25 +30,54 @@
 #define EVT_MQTT_FAIL					BIT5
 #define EVT_CONFIG_RECEIVED				BIT6
 
+#define JSON_BUFFER_LEN (2000)
+
+#define WIFI_CONNECTION_ANTICIPATION_TIME pdMS_TO_TICKS(5000)
+#define NTP_HOST "pool.ntp.org"
+#define NTP_ANTICIPATION_TIME pdMS_TO_TICKS(5000)
+#define MQTT_CONNECTION_ANTICIPATION_TIME pdMS_TO_TICKS(3000)
+#define CONFIGURATION_ANTICIPATION_TIME pdMS_TO_TICKS(3000)
+#define PERIOD_TIMER_ANTICIPATION_TIME pdMS_TO_TICKS(1000)
+
+#define WIFI_RECONNECT_ATTEMPTS 4
+
 typedef struct
 {
 	struct
 	{
-		uint32_t ip_address;
-		char mac_address[18];
-		uint16_t software_version;
+		uint8_t ssid[32];
+		uint8_t password[64];
+	} wifi;
 
-		char name[31];
+	struct
+	{
+		uint32_t port;
+		char *host;
+	} mqtt;
 
-		uint8_t measurement_period;
-	} configuration;
+	uint8_t measurement_period;
+}
+Configuration_t;
 
+typedef struct
+{
+	uint32_t ip_address;
+	char mac_address[18];
+	uint16_t software_version;		
+}
+Properties_t;
+
+typedef struct
+{
 	struct
 	{
 		TaskHandle_t measurements;
 		TaskHandle_t watering;
 		TaskHandle_t configuration_receiver;
 	} tasks;
+
+	Properties_t properties;
+	Configuration_t configuration;
 
 	EventGroupHandle_t event_group;
 	esp_mqtt_client_handle_t mqtt_client;
@@ -56,10 +87,10 @@ Station_t;
 
 typedef Station_t *StationHandle_t;
 
-esp_err_t Station_Create(StationHandle_t *station);
+esp_err_t station_create(StationHandle_t *station);
 
-esp_err_t Station_Start(StationHandle_t station);
+esp_err_t station_start(StationHandle_t station);
 
-void Station_DumpConfiguration(StationHandle_t station);
+void station_dump_configuration(StationHandle_t station);
 
 #endif
