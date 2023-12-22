@@ -713,6 +713,7 @@ static int create_measurement_message(time_t timestamp, char *mac_address,
 	}
 	--pos;
 	pos += sprintf(&buffer[pos], "],\"dht11\":[");
+	int active_dht11_count = 0;
 	for (int i = 0; i < 8; ++i)
 	{
 		if (!dht11_results[i].available)
@@ -723,9 +724,13 @@ static int create_measurement_message(time_t timestamp, char *mac_address,
 		pos += sprintf(&buffer[pos],
 			"{\"line\":%d,\"temp\":%hhu.%hhu,\"hum\":%hhu.%hhu},", i,
 			r->temp_integral, r->temp_decimal, r->rh_integral, r->rh_decimal);
+		++active_dht11_count;
+	}
+	if (active_dht11_count > 0)
+	{
 		--pos;
 	}
-	
+
 	pos += sprintf(&buffer[pos], "],\"ds18b20\":[");
 	for (int i = 0; i < onewire_result->num_readings; ++i)
 	{
@@ -733,8 +738,10 @@ static int create_measurement_message(time_t timestamp, char *mac_address,
 			onewire_result->readings[i].address & 0xFFFFFFFFFFFFFF,
 			onewire_result->readings[i].temperature);
 	}
-	--pos;
-
+	if (onewire_result->num_readings > 0)
+	{
+		--pos;
+	}
 	pos += sprintf(&buffer[pos], "]}");
 	return pos + 1;
 }
