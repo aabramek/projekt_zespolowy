@@ -40,7 +40,7 @@ static void configure_schedules(Valve_t *valve, const cJSON *schedules);
 
 static bool number_in_range(int number, int a, int b);
 
-static void dump_valves_configuration(void);
+void valves_dump_configuration(void);
 
 void WateringTaskCode(void *pvParameters)
 {
@@ -139,8 +139,6 @@ void watering_configure(cJSON *valves)
 	}
 
 	xSemaphoreGive(configuration_mutex);
-
-	dump_valves_configuration();
 }
 
 static bool time_matches_schedule(const TimePoint_t *time_point, 
@@ -350,14 +348,14 @@ static bool number_in_range(int number, int a, int b)
 	return number >= a && number <= b;
 }
 
-static void dump_valves_configuration(void)
+void valves_dump_configuration(void)
 {
 	for (int i = 0; i < VALVES_NUM; ++i)
 	{
-		ESP_LOGI(TAG, "Valve #%d: %d %d", i, valves[i].active_state, valves[i].mode);
+		printf("Valve #%d: %d %d\r\n", i, valves[i].active_state, valves[i].mode);
 		for (int j = 0; j < valves[i].num_schedules; ++j)
 		{
-			printf("%02d:%02d -> %02d:%02d %d\n",
+			printf("%02d:%02d -> %02d:%02d %d\r\n",
 				valves[i].schedules[j].hour_start,
 				valves[i].schedules[j].minute_start,
 				valves[i].schedules[j].hour_stop,

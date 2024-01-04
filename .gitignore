@@ -1,4 +1,5 @@
 stacja_pomiarowa/firmware/build/
+stacja_pomiarowa/firmware/stacja-pomiarowa-firmware.sublime-project
 baza_danych/*.bak
 
 serwer/HELP.md

@@ -1,4 +1,5 @@
 #include "station.h"
+#include "watering.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -21,30 +22,44 @@ static int set_cmd_function(int argc, char **argv);
 
 static int restart_cmd_function(int argc, char **argv);
 
+static int showcfg_cmd_function(int argc, char **argv);
+
+static int wateringcfg_cmd_function(int argc, char **argv);
+
 static int write_mqtt_port_property(nvs_handle_t nvs, uint32_t port);
 
 static int write_string_property(nvs_handle_t nvs, const char *key,
 	const char *value, size_t max_length);
 
+static esp_err_t create_console(void);
+
+static StationHandle_t station = NULL;
+
 void app_main(void)
 {
-	esp_err_t ret = nvs_flash_init();
-	if (ret == ESP_ERR_NVS_NO_FREE_PAGES
-		|| ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+	esp_err_t err = nvs_flash_init();
+	if (err == ESP_ERR_NVS_NO_FREE_PAGES
+		|| err == ESP_ERR_NVS_NEW_VERSION_FOUND)
 	{
 		ESP_ERROR_CHECK(nvs_flash_erase());
-		ret = nvs_flash_init();
+		err = nvs_flash_init();
 	}
 	
-	if (ret != ESP_OK)
+	if (err != ESP_OK)
 	{
-		ESP_LOGE(TAG, "Cannot initialize nvs structure");
+		ESP_LOGE(TAG, "Cannot initialize nvs structure: %s", 
+			esp_err_to_name(err));
 		abort();
 	}
 
 	ESP_LOGI(TAG, "Nvs structure initialized");
 
-	StationHandle_t station = NULL;
+	err = create_console();
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to create console");
+	}
+
 	if (station_create(&station) != ESP_OK)
 	{
 		ESP_LOGE(TAG, "Cannot create station");
@@ -52,8 +67,6 @@ void app_main(void)
 	}
 
 	ESP_LOGI(TAG, "Station created");
-
-	station_dump_configuration(station);
 
 	if (station_start(station) != ESP_OK)
 	{
@@ -64,34 +77,6 @@ void app_main(void)
 	ESP_LOGI(TAG, "Station started");
 
 end:
-	esp_console_repl_t *repl = NULL;
-	
-	esp_console_repl_config_t repl_cfg = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-	repl_cfg.max_history_len = 1;
-	repl_cfg.prompt = "#";
-	repl_cfg.max_cmdline_length = 84;
-	
-	esp_console_register_help_command();
-	
-	esp_console_cmd_t set_cmd = {
-		.command = "set",
-		.help = "usage set [key] [value] Keys: mqtt_port, mqtt_host",
-		.hint = NULL,
-		.func = set_cmd_function
-	};
-
-	if (esp_console_cmd_register(&set_cmd) != ESP_OK)
-	{
-		ESP_LOGE(TAG, "Cannot register \"set\" command");
-	}
-
-	esp_console_dev_uart_config_t hw_config =
-		ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
-    
-    ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_cfg, &repl));
-
-	ESP_ERROR_CHECK(esp_console_start_repl(repl));
-
 	vTaskDelete(NULL);
 }
 
@@ -222,4 +207,88 @@ static int restart_cmd_function(int argc, char **argv)
 {
 	esp_restart();
 	return 0;
+}
+
+static int showcfg_cmd_function(int argc, char **argv)
+{
+	station_dump_configuration(station);
+	return 0;
+}
+
+static int wateringcfg_cmd_function(int argc, char **argv)
+{
+	valves_dump_configuration();
+	return 0;
+}
+
+static esp_err_t create_console(void)
+{
+	esp_err_t err = ESP_OK;
+
+	esp_console_repl_t *repl = NULL;
+	
+	esp_console_repl_config_t repl_cfg = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+	repl_cfg.max_history_len = 1;
+	repl_cfg.prompt = "#";
+	repl_cfg.max_cmdline_length = 84;
+	
+	esp_console_cmd_t commands[] = {
+		{
+			.command = "set",
+			.help = "usage set [key] [value] Keys: mqtt_port, mqtt_host",
+			.hint = NULL,
+			.func = set_cmd_function
+		},
+
+		{
+			.command = "restart",
+			.help = "restarts device",
+			.hint = NULL,
+			.func = restart_cmd_function
+		},
+
+		{
+			.command = "stationcfg",
+			.help = "shows station configuration",
+			.hint = NULL,
+			.func = showcfg_cmd_function
+		},
+
+		{
+			.command = "wateringcfg",
+			.help = "shows watering configuration",
+			.hint = NULL,
+			.func = wateringcfg_cmd_function
+		}
+	};
+
+	for (int i = 0; i < 4; ++i)
+	{
+		err = esp_console_cmd_register(&commands[i]) != ESP_OK;
+		if (err != ESP_OK)
+		{
+			ESP_LOGE(TAG, "Failed to register \"%s\" command: %s",
+				commands[i].command, esp_err_to_name(err));
+		}
+	}
+
+	esp_console_dev_uart_config_t hw_config =
+		ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+    
+    err = esp_console_new_repl_uart(&hw_config, &repl_cfg, &repl);
+    if (err != ESP_OK)
+    {
+    	ESP_LOGE(TAG, "Failed to create new uart repl: %s",
+    		esp_err_to_name(err));
+    	goto end;
+    }
+
+	err = esp_console_start_repl(repl);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to start repl: %s", esp_err_to_name(err));
+	}
+
+end:
+	return err;
 }

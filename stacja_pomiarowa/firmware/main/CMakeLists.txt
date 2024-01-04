@@ -12,4 +12,5 @@ idf_component_register(SRCS "main.c"
                     PRIV_REQUIRES "esp_event"
                     PRIV_REQUIRES "mqtt"
                     PRIV_REQUIRES "driver"
-                    PRIV_REQUIRES "station")
+                    PRIV_REQUIRES "station"
+                    PRIV_REQUIRES "watering")

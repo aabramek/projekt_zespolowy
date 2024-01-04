@@ -47,4 +47,6 @@ void WateringTaskCode(void *pvParameters);
 
 void watering_configure(cJSON *valves);
 
+void valves_dump_configuration(void);
+
 #endif

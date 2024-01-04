@@ -315,12 +315,12 @@ end:
 
 void station_dump_configuration(StationHandle_t station)
 {
-	ESP_LOGI(TAG,
-		"Station configuration:\n"
-		"ip: %lu.%lu.%lu.%lu\n"
-		"mac: %s\n"
-		"measurement_period: %u\n"
-		"mqtt: %s:%lu\n",
+	printf(
+		"Station configuration:\r\n"
+		"ip: %lu.%lu.%lu.%lu\r\n"
+		"mac: %s\r\n"
+		"measurement_period: %u\r\n"
+		"mqtt: %s:%lu\r\n",
 		
 		IP_TO_STRING(station->properties.ip_address),
 		station->properties.mac_address,
