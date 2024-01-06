@@ -1,5 +1,6 @@
 #include "station.h"
 #include "watering.h"
+#include "status_indicator.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -54,13 +55,25 @@ void app_main(void)
 
 	ESP_LOGI(TAG, "Nvs structure initialized");
 
+	StatusIndicator_t status_indicator;
+	err = status_indicator_init(&status_indicator, 17, 16);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to initialize status indicator");
+		goto end;
+	}
+
+	status_indicator_clear(&status_indicator);
+
 	err = create_console();
 	if (err != ESP_OK)
 	{
 		ESP_LOGE(TAG, "Failed to create console");
+		goto end;
 	}
 
-	if (station_create(&station) != ESP_OK)
+	err = station_create(&station);
+	if (err != ESP_OK)
 	{
 		ESP_LOGE(TAG, "Cannot create station");
 		goto end;
@@ -68,7 +81,8 @@ void app_main(void)
 
 	ESP_LOGI(TAG, "Station created");
 
-	if (station_start(station) != ESP_OK)
+	err = station_start(station);
+	if (err != ESP_OK)
 	{
 		ESP_LOGE(TAG, "Cannot start station");
 		goto end;
@@ -76,7 +90,9 @@ void app_main(void)
 	
 	ESP_LOGI(TAG, "Station started");
 
-end:
+end:	
+	status_indicator_indicate(&status_indicator, err == ESP_OK ? OK : FAIL);
+
 	vTaskDelete(NULL);
 }
 
