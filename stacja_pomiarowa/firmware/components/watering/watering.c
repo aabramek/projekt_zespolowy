@@ -40,6 +40,17 @@ static void configure_schedules(Valve_t *valve, const cJSON *schedules);
 
 static bool number_in_range(int number, int a, int b);
 
+static const char *day_names[] = {
+	"niedziela", "poniedzialek", "wtorek", "sroda",
+	"czwartek", "piatek", "sobota"
+};
+
+static const char *mode_names[] = {
+	"zawsze wylaczony",
+	"zawsze wlaczony",
+	"sterowanie wg harmonogramu"
+};
+
 void valves_dump_configuration(void);
 
 void WateringTaskCode(void *pvParameters)
@@ -352,15 +363,17 @@ void valves_dump_configuration(void)
 {
 	for (int i = 0; i < VALVES_NUM; ++i)
 	{
-		printf("Valve #%d: %d %d\r\n", i, valves[i].active_state, valves[i].mode);
+		printf("Elektrozawor #%d: stan aktywny: %d, %s\r\n", i, valves[i].active_state,
+			mode_names[valves[i].mode]);
+
 		for (int j = 0; j < valves[i].num_schedules; ++j)
 		{
-			printf("%02d:%02d -> %02d:%02d %d\r\n",
+			printf("%s %02d:%02d -> %02d:%02d\r\n",
+				day_names[valves[i].schedules[j].day_of_week],
 				valves[i].schedules[j].hour_start,
 				valves[i].schedules[j].minute_start,
 				valves[i].schedules[j].hour_stop,
-				valves[i].schedules[j].minute_stop,
-				valves[i].schedules[j].day_of_week);
+				valves[i].schedules[j].minute_stop);
 		}
 	}
 }
